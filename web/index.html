@@ -8,6 +8,10 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
     
+    <!-- Client-Side Libraries for GitHub Pages / Web Mode -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
     <style>
         :root {
             --brand-navy: #0F172A;
@@ -55,7 +59,7 @@
         .brand {
             display: flex;
             align-items: center;
-            gap: 14px;
+            gap: 12px;
         }
 
         .brand h1 {
@@ -71,10 +75,26 @@
             background: rgba(6, 182, 212, 0.2);
             border: 1px solid var(--brand-cyan);
             color: var(--brand-cyan);
-            font-size: 0.75rem;
+            font-size: 0.72rem;
             padding: 2px 8px;
             border-radius: 999px;
             font-weight: 600;
+        }
+
+        .mode-badge {
+            background: rgba(16, 185, 129, 0.15);
+            border: 1px solid #10B981;
+            color: #34D399;
+            font-size: 0.68rem;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-weight: 600;
+        }
+
+        .mode-badge.web-mode {
+            background: rgba(14, 165, 233, 0.15);
+            border-color: #0284C7;
+            color: #38BDF8;
         }
 
         /* Project Selector in Header */
@@ -97,6 +117,7 @@
             outline: none;
             cursor: pointer;
             padding: 2px 6px;
+            max-width: 280px;
         }
 
         .project-select option {
@@ -124,7 +145,7 @@
         .global-actions {
             display: flex;
             align-items: center;
-            gap: 16px;
+            gap: 12px;
         }
 
         .btn-lang {
@@ -160,7 +181,7 @@
             background: linear-gradient(135deg, var(--brand-cyan), var(--brand-accent));
             color: white;
             border: none;
-            padding: 8px 18px;
+            padding: 8px 16px;
             border-radius: 6px;
             font-weight: 700;
             font-size: 0.85rem;
@@ -175,6 +196,26 @@
         .btn-export:hover {
             transform: translateY(-1px);
             box-shadow: 0 4px 12px rgba(6, 182, 212, 0.4);
+        }
+
+        .btn-export-zip {
+            background: rgba(255, 255, 255, 0.12);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            padding: 7px 12px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 0.8rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.15s;
+        }
+
+        .btn-export-zip:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: white;
         }
 
         /* Main Workspace */
@@ -803,6 +844,7 @@
         <div class="brand">
             <h1>SlidePunch 🥊</h1>
             <span class="badge">Studio</span>
+            <span class="mode-badge" id="appModeBadge">⚡ Native Server</span>
         </div>
 
         <div class="project-selector-wrap">
@@ -820,8 +862,11 @@
             <div class="progress-stats" id="globalStats">
                 Loading...
             </div>
+            <button class="btn-export-zip" id="btnExportZip" onclick="exportProjectZip()" title="Download raw WAVs & notes.md as a ZIP archive">
+                <span>📦</span> <span id="txtExportZip">ZIP</span>
+            </button>
             <button class="btn-export" id="btnExportVideo" onclick="generateVideo()">
-                <span>🎬</span> <span id="txtExportVideo">Export Video (MP4)</span>
+                <span>🎬</span> <span id="txtExportVideo">Export Video</span>
             </button>
         </div>
     </header>
@@ -872,7 +917,7 @@
                 ></textarea>
             </div>
             <div class="prompter-hint">
-                <span id="txtPrompterHint1">✏️ <strong>Editable script</strong> (auto-saved to notes.md)</span>
+                <span id="txtPrompterHint1">✏️ <strong>Editable script</strong> (auto-saved)</span>
                 <span id="txtPrompterHint2">💡 Click outside to re-enable <kbd>Space</kbd></span>
             </div>
         </div>
@@ -996,19 +1041,29 @@
     </div>
 
     <script>
-        // Internationalization (i18n) dictionary
+        // Set PDF.js worker
+        if (window.pdfjsLib) {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+
+        // ==========================================
+        // INTERNATIONALIZATION (i18n)
+        // ==========================================
         const i18n = {
             en: {
+                serverModeBadge: "⚡ Native Server",
+                webModeBadge: "🌐 In-Browser (Privacy First)",
                 projectLabel: "Project:",
                 newProjectBtn: "+ New",
-                exportVideoBtn: "Export Video (MP4)",
+                exportVideoBtn: "Export Video",
+                exportZipBtn: "ZIP",
                 slidesHeader: "Slides",
                 todoBadge: "To Do",
                 targetPrefix: "Target:",
                 savedBadge: "Saved ✓",
                 savingBadge: "Saving...",
                 prompterPlaceholder: "Write or edit the speech script for this slide here...",
-                prompterHint1: "✏️ <strong>Editable script</strong> (auto-saved to notes.md)",
+                prompterHint1: "✏️ <strong>Editable script</strong> (auto-saved)",
                 prompterHint2: "💡 Click outside to re-enable <kbd>Space</kbd>",
                 waveformTitle: "📊 <strong>Waveform</strong> (click to move playhead or resume recording)",
                 waveformHint: "Click on the waveform to place the cursor and punch-in from this exact spot.",
@@ -1030,11 +1085,11 @@
                 modalCancel: "Cancel",
                 modalSubmit: "Create Project",
                 modalImportingTitle: "Importing PDF...",
-                modalImportingMsg: "Converting PDF slides into high-resolution images with pdftoppm. Please wait...",
-                modalGeneratingTitle: "Generating 1080p Video...",
-                modalGeneratingMsg: "FFmpeg is stitching your slide images and audio into a 1080p MP4 video. Please wait...",
-                modalSuccessTitle: "🎉 Video Generated!",
-                modalSuccessMsg: "Video successfully assembled!<br><br><a href=\"{url}\" target=\"_blank\" style=\"color:var(--brand-cyan); font-weight:700; font-size:1.1rem;\">▶ Download / Watch Video</a>",
+                modalImportingMsg: "Converting PDF slides into high-resolution images. Please wait...",
+                modalGeneratingTitle: "Generating Video...",
+                modalGeneratingMsg: "Stitching slide images and audio into a presentation video. Please wait...",
+                modalSuccessTitle: "🎉 Video Ready!",
+                modalSuccessMsg: "Video successfully assembled!<br><br><a href=\"{url}\" download=\"presentation.webm\" target=\"_blank\" style=\"color:var(--brand-cyan); font-weight:700; font-size:1.1rem;\">▶ Download Video</a>",
                 modalErrorTitle: "❌ Error",
                 closeBtn: "Close",
                 recordedStats: "recorded",
@@ -1042,16 +1097,19 @@
                 confirmCancelRec: "A recording is in progress. Do you want to cancel it to switch slides?"
             },
             fr: {
+                serverModeBadge: "⚡ Serveur Local",
+                webModeBadge: "🌐 100% Navigateur (Privé)",
                 projectLabel: "Projet :",
                 newProjectBtn: "+ Nouveau",
-                exportVideoBtn: "Exporter la Vidéo (MP4)",
+                exportVideoBtn: "Exporter la Vidéo",
+                exportZipBtn: "ZIP",
                 slidesHeader: "Diapositives",
                 todoBadge: "À faire",
                 targetPrefix: "Cible :",
                 savedBadge: "Sauvegardé ✓",
                 savingBadge: "Enregistrement...",
                 prompterPlaceholder: "Écrivez ou modifiez le script de cette slide ici...",
-                prompterHint1: "✏️ <strong>Script modifiable</strong> (auto-sauvegardé dans notes.md)",
+                prompterHint1: "✏️ <strong>Script modifiable</strong> (auto-sauvegardé)",
                 prompterHint2: "💡 Cliquez en dehors pour réactiver <kbd>Espace</kbd>",
                 waveformTitle: "📊 <strong>Forme d'onde</strong> (cliquez pour déplacer la tête de lecture ou reprendre l'enregistrement)",
                 waveformHint: "Cliquez sur la forme d'onde pour déplacer le curseur et relancer depuis cet endroit précis.",
@@ -1073,11 +1131,11 @@
                 modalCancel: "Annuler",
                 modalSubmit: "Créer le Projet",
                 modalImportingTitle: "Importation du PDF...",
-                modalImportingMsg: "Conversion des diapositives PDF en images haute résolution avec pdftoppm. Veuillez patienter...",
-                modalGeneratingTitle: "Génération de la Vidéo 1080p...",
-                modalGeneratingMsg: "FFmpeg assemble vos diapositives et enregistrements audio en 1080p. Veuillez patienter...",
-                modalSuccessTitle: "🎉 Vidéo Générée !",
-                modalSuccessMsg: "La vidéo a été assemblée avec succès !<br><br><a href=\"{url}\" target=\"_blank\" style=\"color:var(--brand-cyan); font-weight:700; font-size:1.1rem;\">▶ Télécharger / Visionner la vidéo</a>",
+                modalImportingMsg: "Conversion des diapositives PDF en images haute résolution. Veuillez patienter...",
+                modalGeneratingTitle: "Génération de la Vidéo...",
+                modalGeneratingMsg: "Assemblage des diapositives et des enregistrements audio. Veuillez patienter...",
+                modalSuccessTitle: "🎉 Vidéo Prête !",
+                modalSuccessMsg: "La vidéo a été assemblée avec succès !<br><br><a href=\"{url}\" download=\"presentation.webm\" target=\"_blank\" style=\"color:var(--brand-cyan); font-weight:700; font-size:1.1rem;\">▶ Télécharger la Vidéo</a>",
                 modalErrorTitle: "❌ Erreur",
                 closeBtn: "Fermer",
                 recordedStats: "enregistrées",
@@ -1103,9 +1161,11 @@
             document.getElementById('langFlag').textContent = currentLang === 'en' ? '🇫🇷' : '🇬🇧';
             document.getElementById('langText').textContent = currentLang === 'en' ? 'FR' : 'EN';
             
+            updateModeBadge();
             document.getElementById('txtProjectLabel').textContent = t('projectLabel');
             document.getElementById('btnNewProj').textContent = t('newProjectBtn');
             document.getElementById('txtExportVideo').textContent = t('exportVideoBtn');
+            document.getElementById('txtExportZip').textContent = t('exportZipBtn');
             document.getElementById('txtSlidesHeader').textContent = t('slidesHeader');
             document.getElementById('btnPrevSlide').textContent = t('prevBtn');
             document.getElementById('btnNextSlide').textContent = t('nextBtn');
@@ -1135,10 +1195,67 @@
             updateGlobalStats();
             
             if (slides[currentIndex]) {
-                document.getElementById('prompterTarget').textContent = `${t('targetPrefix')} ${slides[currentIndex].targetTime}`;
+                document.getElementById('prompterTarget').textContent = `${t('targetPrefix')} ${slides[currentIndex].targetTime || '1:00'}`;
             }
         }
 
+        function updateModeBadge() {
+            const badge = document.getElementById('appModeBadge');
+            if (isServerMode) {
+                badge.className = "mode-badge";
+                badge.textContent = t('serverModeBadge');
+            } else {
+                badge.className = "mode-badge web-mode";
+                badge.textContent = t('webModeBadge');
+            }
+        }
+
+        // ==========================================
+        // HYBRID STORAGE ENGINE (IndexedDB / Server)
+        // ==========================================
+        let isServerMode = false;
+        let db = null;
+
+        function openIndexedDB() {
+            return new Promise((resolve, reject) => {
+                const req = indexedDB.open('SlidePunchDB', 1);
+                req.onupgradeneeded = (e) => {
+                    const database = e.target.result;
+                    if (!database.objectStoreNames.contains('projects')) {
+                        database.createObjectStore('projects', { keyPath: 'id' });
+                    }
+                    if (!database.objectStoreNames.contains('slides')) {
+                        database.createObjectStore('slides', { keyPath: 'key' }); // key: `${projectId}_${slideNum}`
+                    }
+                    if (!database.objectStoreNames.contains('audio')) {
+                        database.createObjectStore('audio', { keyPath: 'key' });
+                    }
+                };
+                req.onsuccess = (e) => {
+                    db = e.target.result;
+                    resolve(db);
+                };
+                req.onerror = (e) => reject(e);
+            });
+        }
+
+        async function detectBackend() {
+            try {
+                const res = await fetch('/api/projects', { method: 'GET' });
+                if (res.ok) {
+                    isServerMode = true;
+                } else {
+                    isServerMode = false;
+                }
+            } catch (e) {
+                isServerMode = false;
+            }
+            updateModeBadge();
+        }
+
+        // ==========================================
+        // APPLICATION STATE
+        // ==========================================
         let currentProjectId = "hdr_demo";
         let projects = [];
         let slides = [];
@@ -1173,27 +1290,122 @@
             window.addEventListener('resize', resizeCanvas);
             resizeCanvas();
 
+            await detectBackend();
+            if (!isServerMode) {
+                await openIndexedDB();
+                await ensureWebDemoData();
+            }
+
             applyLanguage();
             await loadProjectsList();
             await loadProject(currentProjectId);
         }
 
-        async function loadProjectsList() {
-            try {
-                const res = await fetch('/api/projects');
-                projects = await res.json();
-                const sel = document.getElementById('projectSelect');
-                sel.innerHTML = '';
-                projects.forEach(p => {
-                    const opt = document.createElement('option');
-                    opt.value = p.id;
-                    opt.textContent = `${p.title} (${p.slideCount} slides)`;
-                    if (p.id === currentProjectId) opt.selected = true;
-                    sel.appendChild(opt);
+        // ==========================================
+        // CLIENT-SIDE DEMO DATA GENERATOR (Web Mode)
+        // ==========================================
+        async function ensureWebDemoData() {
+            const tx = db.transaction(['projects', 'slides'], 'readonly');
+            const pStore = tx.objectStore('projects');
+            const countReq = pStore.count();
+            
+            const count = await new Promise(r => { countReq.onsuccess = () => r(countReq.result); });
+            if (count > 0) return; // already initialized
+
+            console.log("--> Initializing Web Mode demo project...");
+            const demoProj = {
+                id: 'hdr_demo',
+                title: 'Sobriety through Co-design in Deep Learning',
+                slideCount: 4
+            };
+
+            const demoSlides = [
+                {
+                    number: 1,
+                    topic: 'Title & Introduction',
+                    targetTime: '0:45',
+                    script: "Bonjour à toutes et à tous. Je suis ravi de vous présenter aujourd'hui mes travaux d'Habilitation à Diriger des Recherches, intitulés Sobriété par le Co-design en Apprentissage Profond et Communications Numériques.\n\nDans cette soutenance, nous allons explorer comment l'adéquation algorithme-architecture permet de concevoir des systèmes d'intelligence artificielle frugaux, efficaces et déployables directement à la périphérie.",
+                    image: generateSlidePlaceholderSvg(1, "Sobriety through Co-design in Deep Learning", "Mathieu Léonardon — IMT Atlantique")
+                },
+                {
+                    number: 2,
+                    topic: 'Career Timeline & Background',
+                    targetTime: '1:15',
+                    script: "Pour commencer, voici un aperçu de mon parcours académique et de mes thématiques de recherche.\n\nAprès une formation d'ingénieur en électronique et une thèse à Bordeaux INP et Polytechnique Montréal sur les décodeurs polaires, j'ai rejoint IMT Atlantique en 2020 au sein du Lab-STICC.\n\nMes travaux s'articulent autour de l'apprentissage profond embarqué, de la compression de modèles, et du déploiement efficace sur circuits numériques et microcontrôleurs.",
+                    image: generateSlidePlaceholderSvg(2, "Career Timeline & Research Background", "Bordeaux INP → Polytechnique Montréal → IMT Atlantique (Lab-STICC)")
+                },
+                {
+                    number: 3,
+                    topic: 'Teaching & Pedagogical Innovation',
+                    targetTime: '1:00',
+                    script: "L'enseignement est au cœur de mes activités, avec environ 170 heures par an dispensées sur l'ensemble du cursus ingénieur.\n\nJ'interviens notamment en apprentissage profond, architectures numériques et programmation embarquée, en favorisant les projets pratiques et l'apprentissage par problèmes.",
+                    image: generateSlidePlaceholderSvg(3, "Teaching & Pedagogical Innovation", "170h / year • Deep Learning • Embedded Systems • Hardware-Software Co-design")
+                },
+                {
+                    number: 4,
+                    topic: 'BRAIN Team & Research Axes',
+                    targetTime: '1:15',
+                    script: "Voici la présentation de l'équipe BRAIN et de nos grands axes de recherche.\n\nNos travaux se concentrent sur la sobriété algorithmique, la quantification agressive, et l'implémentation sur microcontrôleurs simples comme les Cortex-M0+ et Cortex-M4.",
+                    image: generateSlidePlaceholderSvg(4, "BRAIN Team & Research Axes", "Algorithmic Sobriety • Ultra-low-power Edge AI • Microcontrollers")
+                }
+            ];
+
+            const writeTx = db.transaction(['projects', 'slides'], 'readwrite');
+            writeTx.objectStore('projects').put(demoProj);
+            demoSlides.forEach(s => {
+                writeTx.objectStore('slides').put({
+                    key: `hdr_demo_${s.number}`,
+                    projectId: 'hdr_demo',
+                    ...s
                 });
-            } catch (err) {
-                console.error("Erreur projets:", err);
+            });
+        }
+
+        function generateSlidePlaceholderSvg(num, title, subtitle) {
+            const svg = `
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080">
+                <rect width="1920" height="1080" fill="#0F172A"/>
+                <circle cx="960" cy="540" r="500" fill="none" stroke="rgba(6,182,212,0.15)" stroke-width="2"/>
+                <circle cx="960" cy="540" r="750" fill="none" stroke="rgba(2,132,199,0.1)" stroke-width="2"/>
+                <rect x="120" y="100" width="1680" height="880" rx="24" fill="rgba(30,41,59,0.7)" stroke="rgba(255,255,255,0.1)" stroke-width="2"/>
+                <text x="200" y="240" font-family="sans-serif" font-size="36" font-weight="700" fill="#06B6D4">SLIDE ${num}</text>
+                <text x="200" y="440" font-family="sans-serif" font-size="64" font-weight="800" fill="#FFFFFF">${title}</text>
+                <text x="200" y="560" font-family="sans-serif" font-size="36" font-weight="500" fill="#94A3B8">${subtitle}</text>
+                <text x="200" y="880" font-family="sans-serif" font-size="28" font-weight="600" fill="#64748B">SlidePunch Studio — Slide-by-Slide Recording</text>
+            </svg>
+            `;
+            return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+        }
+
+        // ==========================================
+        // PROJECT & SLIDE MANAGEMENT
+        // ==========================================
+
+        async function loadProjectsList() {
+            const sel = document.getElementById('projectSelect');
+            sel.innerHTML = '';
+
+            if (isServerMode) {
+                try {
+                    const res = await fetch('/api/projects');
+                    projects = await res.json();
+                } catch (err) {
+                    console.error("Server projects error:", err);
+                }
+            } else {
+                const tx = db.transaction(['projects'], 'readonly');
+                const store = tx.objectStore('projects');
+                const req = store.getAll();
+                projects = await new Promise(r => { req.onsuccess = () => r(req.result || []); });
             }
+
+            projects.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                opt.textContent = `${p.title} (${p.slideCount} slides)`;
+                if (p.id === currentProjectId) opt.selected = true;
+                sel.appendChild(opt);
+            });
         }
 
         async function onProjectChange(projId) {
@@ -1203,16 +1415,41 @@
 
         async function loadProject(projId) {
             currentProjectId = projId;
-            try {
-                const res = await fetch(`/api/slides?project=${projId}`);
-                slides = await res.json();
-                document.getElementById('slideCountBadge').textContent = slides.length;
-                renderSidebar();
-                await loadSlide(0);
-                updateGlobalStats();
-            } catch (err) {
-                console.error("Erreur chargement projet slides:", err);
+            if (isServerMode) {
+                try {
+                    const res = await fetch(`/api/slides?project=${projId}`);
+                    slides = await res.json();
+                } catch (err) {
+                    console.error("Server slides error:", err);
+                }
+            } else {
+                const tx = db.transaction(['slides', 'audio'], 'readonly');
+                const sStore = tx.objectStore('slides');
+                const aStore = tx.objectStore('audio');
+                const sReq = sStore.getAll();
+                const allSlides = await new Promise(r => { sReq.onsuccess = () => r(sReq.result || []); });
+                
+                const filtered = allSlides.filter(s => s.projectId === projId);
+                filtered.sort((a, b) => a.number - b.number);
+                
+                for (let s of filtered) {
+                    const aReq = aStore.get(`${projId}_${s.number}`);
+                    const audioRec = await new Promise(r => { aReq.onsuccess = () => r(aReq.result); });
+                    if (audioRec) {
+                        s.hasAudio = true;
+                        s.audioDuration = audioRec.duration;
+                        s.audioBlob = audioRec.blob;
+                    } else {
+                        s.hasAudio = false;
+                    }
+                }
+                slides = filtered;
             }
+
+            document.getElementById('slideCountBadge').textContent = slides.length;
+            renderSidebar();
+            await loadSlide(0);
+            updateGlobalStats();
         }
 
         function resizeCanvas() {
@@ -1245,7 +1482,7 @@
                         <span class="slide-num">Slide ${s.number}</span>
                         <span class="slide-status ${statusClass}">${statusText}</span>
                     </div>
-                    <div class="slide-topic">${s.topic}</div>
+                    <div class="slide-topic">${s.topic || `Slide ${s.number}`}</div>
                 `;
                 list.appendChild(item);
             });
@@ -1261,9 +1498,14 @@
             currentIndex = index;
             const slide = slides[currentIndex];
 
-            document.getElementById('currentSlideImg').src = slide.image + '&t=' + new Date().getTime();
-            document.getElementById('prompterSlideTitle').textContent = `Slide ${slide.number} : ${slide.topic}`;
-            document.getElementById('prompterTarget').textContent = `${t('targetPrefix')} ${slide.targetTime}`;
+            if (isServerMode) {
+                document.getElementById('currentSlideImg').src = slide.image + '&t=' + new Date().getTime();
+            } else {
+                document.getElementById('currentSlideImg').src = slide.image;
+            }
+
+            document.getElementById('prompterSlideTitle').textContent = `Slide ${slide.number} : ${slide.topic || ''}`;
+            document.getElementById('prompterTarget').textContent = `${t('targetPrefix')} ${slide.targetTime || '1:00'}`;
             
             const textarea = document.getElementById('prompterScript');
             textarea.value = slide.script || '';
@@ -1279,18 +1521,26 @@
 
         async function fetchSlideAudioWav() {
             const slide = slides[currentIndex];
-            if (slide.hasAudio && slide.audioUrl) {
+            if (slide && slide.hasAudio) {
                 try {
                     ensureAudioContext();
-                    const response = await fetch(slide.audioUrl + '&t=' + new Date().getTime());
-                    const arrayBuffer = await response.arrayBuffer();
-                    const decoded = await audioContext.decodeAudioData(arrayBuffer);
-                    sampleRate = decoded.sampleRate;
-                    currentSamples = Array.from(decoded.getChannelData(0));
-                    totalDuration = currentSamples.length / sampleRate;
-                    playheadPosition = 0.0;
+                    let arrayBuffer;
+                    if (isServerMode) {
+                        const response = await fetch(slide.audioUrl + '&t=' + new Date().getTime());
+                        arrayBuffer = await response.arrayBuffer();
+                    } else if (slide.audioBlob) {
+                        arrayBuffer = await slide.audioBlob.arrayBuffer();
+                    }
+
+                    if (arrayBuffer) {
+                        const decoded = await audioContext.decodeAudioData(arrayBuffer);
+                        sampleRate = decoded.sampleRate;
+                        currentSamples = Array.from(decoded.getChannelData(0));
+                        totalDuration = currentSamples.length / sampleRate;
+                        playheadPosition = 0.0;
+                    }
                 } catch (err) {
-                    console.warn("Erreur chargement audio:", err);
+                    console.warn("Audio load error:", err);
                     currentSamples = [];
                     totalDuration = 0.0;
                 }
@@ -1313,7 +1563,6 @@
         // ==========================================
         // WAVEFORM RENDERING & INTERACTIVE PLAYHEAD
         // ==========================================
-
         let isDraggingPlayhead = false;
 
         function drawWaveform() {
@@ -1509,7 +1758,7 @@
                 }, 80);
 
             } catch (err) {
-                alert("Microphone Error : " + err.message);
+                alert("Microphone Error: " + err.message);
                 recordingState = 'idle';
                 updateControlUI();
             }
@@ -1553,7 +1802,7 @@
             document.getElementById('timerDisplay').textContent = t('savingTimer');
 
             const wavBlob = encodeWAV(currentSamples, sampleRate);
-            await uploadWavBlob(wavBlob);
+            await saveSlideAudio(wavBlob);
         }
 
         function cancelRecording() {
@@ -1571,32 +1820,56 @@
             updateControlUI();
         }
 
-        async function uploadWavBlob(blob) {
+        async function saveSlideAudio(blob) {
             const slide = slides[currentIndex];
-            try {
-                const res = await fetch(`/api/save_audio?project=${currentProjectId}&slide=${slide.number}`, {
-                    method: 'POST',
-                    body: blob
-                });
-                const data = await res.json();
-                if (data.success) {
-                    slide.hasAudio = true;
-                    slide.audioDuration = data.duration;
-                    slide.audioUrl = data.audioUrl;
-                    recordingState = 'idle';
-                    await fetchSlideAudioWav();
-                    updateControlUI();
-                    renderSidebar();
-                    updateGlobalStats();
-                } else {
-                    alert(t('modalErrorTitle') + " : " + data.error);
+            const dur = currentSamples.length / sampleRate;
+
+            if (isServerMode) {
+                try {
+                    const res = await fetch(`/api/save_audio?project=${currentProjectId}&slide=${slide.number}`, {
+                        method: 'POST',
+                        body: blob
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        slide.hasAudio = true;
+                        slide.audioDuration = data.duration;
+                        slide.audioUrl = data.audioUrl;
+                        recordingState = 'idle';
+                        await fetchSlideAudioWav();
+                        updateControlUI();
+                        renderSidebar();
+                        updateGlobalStats();
+                    } else {
+                        alert(t('modalErrorTitle') + " : " + data.error);
+                        recordingState = 'idle';
+                        updateControlUI();
+                    }
+                } catch (err) {
+                    alert("Upload Error : " + err.message);
                     recordingState = 'idle';
                     updateControlUI();
                 }
-            } catch (err) {
-                alert("Upload Error : " + err.message);
+            } else {
+                // Save to IndexedDB
+                const tx = db.transaction(['audio'], 'readwrite');
+                const store = tx.objectStore('audio');
+                await store.put({
+                    key: `${currentProjectId}_${slide.number}`,
+                    blob: blob,
+                    duration: dur,
+                    updatedAt: new Date().toISOString()
+                });
+
+                slide.hasAudio = true;
+                slide.audioDuration = dur;
+                slide.audioBlob = blob;
                 recordingState = 'idle';
+
+                await fetchSlideAudioWav();
                 updateControlUI();
+                renderSidebar();
+                updateGlobalStats();
             }
         }
 
@@ -1804,24 +2077,39 @@
             const text = document.getElementById('prompterScript').value;
             slide.script = text;
 
-            try {
-                const res = await fetch(`/api/save_script?project=${currentProjectId}&slide=${slide.number}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ script: text })
-                });
-                const data = await res.json();
-                if (data.success) {
-                    const indicator = document.getElementById('saveIndicator');
-                    indicator.textContent = t('savedBadge');
-                    indicator.className = 'save-indicator visible';
-                    setTimeout(() => {
-                        indicator.classList.remove('visible');
-                    }, 2000);
+            if (isServerMode) {
+                try {
+                    const res = await fetch(`/api/save_script?project=${currentProjectId}&slide=${slide.number}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ script: text })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        showSavedBadge();
+                    }
+                } catch (err) {
+                    console.error("Script save error:", err);
                 }
-            } catch (err) {
-                console.error("Erreur sauvegarde script:", err);
+            } else {
+                const tx = db.transaction(['slides'], 'readwrite');
+                const store = tx.objectStore('slides');
+                await store.put({
+                    key: `${currentProjectId}_${slide.number}`,
+                    projectId: currentProjectId,
+                    ...slide
+                });
+                showSavedBadge();
             }
+        }
+
+        function showSavedBadge() {
+            const indicator = document.getElementById('saveIndicator');
+            indicator.textContent = t('savedBadge');
+            indicator.className = 'save-indicator visible';
+            setTimeout(() => {
+                indicator.classList.remove('visible');
+            }, 2000);
         }
 
         function changeFontSize(delta) {
@@ -1846,7 +2134,7 @@
         }
 
         // ==========================================
-        // NEW PROJECT / PDF IMPORT
+        // NEW PROJECT / PDF IMPORT (Hybrid: pdf.js / pdftoppm)
         // ==========================================
 
         function openNewProjectModal() {
@@ -1898,33 +2186,97 @@
 
             const safeName = title.toLowerCase().replace(/[^a-z0-9]/g, '_');
 
-            try {
-                const res = await fetch(`/api/projects/new?name=${safeName}&title=${encodeURIComponent(title)}`, {
-                    method: 'POST',
-                    body: selectedPdfBytes
-                });
-                const data = await res.json();
-                if (data.success) {
-                    currentProjectId = data.projectId;
-                    await loadProjectsList();
-                    await loadProject(currentProjectId);
-                    closeModal();
-                } else {
+            if (isServerMode) {
+                try {
+                    const res = await fetch(`/api/projects/new?name=${safeName}&title=${encodeURIComponent(title)}`, {
+                        method: 'POST',
+                        body: selectedPdfBytes
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        currentProjectId = data.projectId;
+                        await loadProjectsList();
+                        await loadProject(currentProjectId);
+                        closeModal();
+                    } else {
+                        spinner.style.display = 'none';
+                        closeBtn.style.display = 'block';
+                        titleEl.textContent = t('modalErrorTitle');
+                        msg.textContent = data.error || "Cannot import PDF.";
+                    }
+                } catch (err) {
                     spinner.style.display = 'none';
                     closeBtn.style.display = 'block';
                     titleEl.textContent = t('modalErrorTitle');
-                    msg.textContent = data.error || "Cannot import PDF.";
+                    msg.textContent = err.message;
                 }
-            } catch (err) {
-                spinner.style.display = 'none';
-                closeBtn.style.display = 'block';
-                titleEl.textContent = t('modalErrorTitle');
-                msg.textContent = err.message;
+            } else {
+                // Client-side PDF rendering using PDF.js
+                try {
+                    const loadingTask = pdfjsLib.getDocument({ data: selectedPdfBytes });
+                    const pdfDoc = await loadingTask.promise;
+                    const numPages = pdfDoc.numPages;
+                    
+                    const extractedSlides = [];
+                    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+                        msg.textContent = `${t('modalImportingMsg')} (${pageNum} / ${numPages})`;
+                        const page = await pdfDoc.getPage(pageNum);
+                        const viewport = page.getViewport({ scale: 2.0 }); // High DPI
+                        
+                        const renderCanvas = document.createElement('canvas');
+                        renderCanvas.width = viewport.width;
+                        renderCanvas.height = viewport.height;
+                        const renderCtx = renderCanvas.getContext('2d');
+                        
+                        await page.render({ canvasContext: renderCtx, viewport: viewport }).promise;
+                        const imgDataUrl = renderCanvas.toDataURL('image/png');
+                        
+                        // Extract text for prompter
+                        const textContent = await page.getTextContent();
+                        const pageText = textContent.items.map(item => item.str).join(' ');
+                        const firstLine = pageText.split('.')[0].slice(0, 50) || `Slide ${pageNum}`;
+
+                        extractedSlides.push({
+                            number: pageNum,
+                            topic: firstLine,
+                            targetTime: '1:00',
+                            script: pageText.trim(),
+                            image: imgDataUrl
+                        });
+                    }
+
+                    const newProj = {
+                        id: safeName,
+                        title: title,
+                        slideCount: numPages
+                    };
+
+                    const tx = db.transaction(['projects', 'slides'], 'readwrite');
+                    tx.objectStore('projects').put(newProj);
+                    extractedSlides.forEach(s => {
+                        tx.objectStore('slides').put({
+                            key: `${safeName}_${s.number}`,
+                            projectId: safeName,
+                            ...s
+                        });
+                    });
+
+                    currentProjectId = safeName;
+                    await loadProjectsList();
+                    await loadProject(currentProjectId);
+                    closeModal();
+
+                } catch (err) {
+                    spinner.style.display = 'none';
+                    closeBtn.style.display = 'block';
+                    titleEl.textContent = t('modalErrorTitle');
+                    msg.textContent = "PDF.js Error: " + err.message;
+                }
             }
         }
 
         // ==========================================
-        // GENERATE FINAL VIDEO
+        // VIDEO GENERATION (Hybrid: FFmpeg Server / WebCodecs Canvas)
         // ==========================================
 
         async function generateVideo() {
@@ -1946,25 +2298,147 @@
             closeBtn.style.display = 'none';
             msg.textContent = t('modalGeneratingMsg');
 
-            try {
-                const res = await fetch(`/api/generate_video?project=${currentProjectId}`, { method: 'POST' });
-                const data = await res.json();
-                spinner.style.display = 'none';
-                closeBtn.style.display = 'block';
+            if (isServerMode) {
+                try {
+                    const res = await fetch(`/api/generate_video?project=${currentProjectId}`, { method: 'POST' });
+                    const data = await res.json();
+                    spinner.style.display = 'none';
+                    closeBtn.style.display = 'block';
 
-                if (data.success) {
-                    title.textContent = t('modalSuccessTitle');
-                    msg.innerHTML = t('modalSuccessMsg').replace('{url}', data.videoUrl);
-                } else {
+                    if (data.success) {
+                        title.textContent = t('modalSuccessTitle');
+                        msg.innerHTML = t('modalSuccessMsg').replace('{url}', data.videoUrl);
+                    } else {
+                        title.textContent = t('modalErrorTitle');
+                        msg.textContent = data.message || "Error generating video.";
+                    }
+                } catch (err) {
+                    spinner.style.display = 'none';
+                    closeBtn.style.display = 'block';
                     title.textContent = t('modalErrorTitle');
-                    msg.textContent = data.message || "Error generating video.";
+                    msg.textContent = err.message;
                 }
-            } catch (err) {
-                spinner.style.display = 'none';
-                closeBtn.style.display = 'block';
-                title.textContent = t('modalErrorTitle');
-                msg.textContent = err.message;
+            } else {
+                // Client-side Video Stitching using MediaRecorder + Web Audio
+                try {
+                    ensureAudioContext();
+                    const vCanvas = document.createElement('canvas');
+                    vCanvas.width = 1920;
+                    vCanvas.height = 1080;
+                    const vCtx = vCanvas.getContext('2d');
+
+                    const videoStream = vCanvas.captureStream(30);
+                    const audioDest = audioContext.createMediaStreamDestination();
+                    
+                    const combinedStream = new MediaStream([
+                        ...videoStream.getVideoTracks(),
+                        ...audioDest.stream.getAudioTracks()
+                    ]);
+
+                    const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') 
+                        ? 'video/webm;codecs=vp9,opus' 
+                        : (MediaRecorder.isTypeSupported('video/mp4') ? 'video/mp4' : 'video/webm');
+
+                    const recorder = new MediaRecorder(combinedStream, { mimeType });
+                    const chunks = [];
+                    recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+
+                    recorder.start();
+
+                    // Play and draw each slide in sequence
+                    for (let i = 0; i < slides.length; i++) {
+                        const s = slides[i];
+                        msg.textContent = `${t('modalGeneratingMsg')} (Slide ${s.number} / ${slides.length})`;
+                        
+                        // Load image
+                        const img = new Image();
+                        await new Promise((resolve) => {
+                            img.onload = resolve;
+                            img.src = s.image;
+                        });
+
+                        // Draw slide
+                        vCtx.fillStyle = '#0F172A';
+                        vCtx.fillRect(0, 0, 1920, 1080);
+                        vCtx.drawImage(img, 0, 0, 1920, 1080);
+
+                        // Play audio if present
+                        if (s.hasAudio && s.audioBlob) {
+                            const buffer = await audioContext.decodeAudioData(await s.audioBlob.arrayBuffer());
+                            const srcNode = audioContext.createBufferSource();
+                            srcNode.buffer = buffer;
+                            srcNode.connect(audioDest);
+                            srcNode.start();
+                            await new Promise(resolve => {
+                                srcNode.onended = resolve;
+                            });
+                        } else {
+                            // Default 3s pause for slides without audio
+                            await new Promise(r => setTimeout(r, 3000));
+                        }
+                    }
+
+                    recorder.stop();
+                    await new Promise(resolve => { recorder.onstop = resolve; });
+
+                    const videoBlob = new Blob(chunks, { type: mimeType });
+                    const videoUrl = URL.createObjectURL(videoBlob);
+
+                    spinner.style.display = 'none';
+                    closeBtn.style.display = 'block';
+                    title.textContent = t('modalSuccessTitle');
+                    msg.innerHTML = t('modalSuccessMsg').replace('{url}', videoUrl);
+
+                } catch (err) {
+                    spinner.style.display = 'none';
+                    closeBtn.style.display = 'block';
+                    title.textContent = t('modalErrorTitle');
+                    msg.textContent = "Client Video Export Error: " + err.message;
+                }
             }
+        }
+
+        // ==========================================
+        // EXPORT PROJECT ZIP
+        // ==========================================
+        async function exportProjectZip() {
+            if (!window.JSZip) {
+                alert("JSZip library loading...");
+                return;
+            }
+
+            const zip = new JSZip();
+            const projFolder = zip.folder(currentProjectId);
+
+            // Export notes.md
+            let notesMd = `# ${currentProjectId}\n\n`;
+            slides.forEach(s => {
+                notesMd += `### Slide ${s.number}: ${s.topic || ''}\n`;
+                notesMd += `${s.script || ''}\n\n---\n\n`;
+            });
+            projFolder.file("notes.md", notesMd);
+
+            // Export recordings
+            const recFolder = projFolder.folder("recordings");
+            for (let s of slides) {
+                if (s.hasAudio) {
+                    if (isServerMode) {
+                        try {
+                            const res = await fetch(s.audioUrl);
+                            const blob = await res.blob();
+                            recFolder.file(`slide_${s.number.toString().padStart(2, '0')}.wav`, blob);
+                        } catch(e){}
+                    } else if (s.audioBlob) {
+                        recFolder.file(`slide_${s.number.toString().padStart(2, '0')}.wav`, s.audioBlob);
+                    }
+                }
+            }
+
+            const content = await zip.generateAsync({ type: "blob" });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(content);
+            link.download = `${currentProjectId}_slidepunch_project.zip`;
+            link.click();
         }
 
         function closeModal() {

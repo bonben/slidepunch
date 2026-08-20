@@ -7,6 +7,11 @@
     <img src="https://img.youtube.com/vi/a1E1wGVw_uk/maxresdefault.jpg" alt="Watch SlidePunch Demo on YouTube" width="85%" style="border-radius:10px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);">
   </a>
   <br><br>
+<p align="center">
+  <a href="https://bonben.github.io/slidepunch/" target="_blank">
+    <img src="https://img.shields.io/badge/🚀%20Live%20Web%20App-Try%20in%20Browser%20(No%20Install)-06B6D4?style=for-the-badge" alt="Live Web App">
+  </a>
+  &nbsp;
   <a href="https://www.youtube.com/watch?v=a1E1wGVw_uk" target="_blank">
     <img src="https://img.shields.io/badge/YouTube-Watch%20Video%20Demo%20(1m35s)-red?style=for-the-badge&logo=youtube" alt="Watch Demo">
   </a>
@@ -16,6 +21,7 @@
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.8+-green.svg" alt="Python: 3.8+"></a>
   <a href="#requirements"><img src="https://img.shields.io/badge/Dependencies-Zero%20pip%20packages-brightgreen.svg" alt="Zero Dependencies"></a>
+  <a href="https://bonben.github.io/slidepunch/"><img src="https://img.shields.io/badge/GitHub%20Pages-Live-success.svg" alt="GitHub Pages"></a>
   <a href="https://github.com/bonben/slidepunch"><img src="https://img.shields.io/badge/UI-English%20%2F%20Fran%C3%A7ais-blueviolet.svg" alt="Bilingual EN/FR"></a>
 </p>
 

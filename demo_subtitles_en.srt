@@ -1,0 +1,55 @@
+1
+00:00:00,500 --> 00:00:04,500
+Hi everyone! I'm going to show you a quick little tool I just developed called SlidePunch.
+
+2
+00:00:04,799 --> 00:00:11,199
+It lets you record audio slide-by-slide on your presentation decks and export a full video for conferences or lectures.
+
+3
+00:00:11,500 --> 00:00:18,500
+The interface is very simple: your slide in the center, an editable teleprompter on the right, and the slide list on the left.
+
+4
+00:00:19,000 --> 00:00:25,500
+Let's hit record... allow microphone access... and now we can start speaking.
+
+5
+00:00:26,000 --> 00:00:29,800
+Hello everyone, today I'm presenting my research on... blah, blah, blah.
+
+6
+00:00:30,199 --> 00:00:40,000
+Now imagine I just stumbled on a word like I just did! I can just click on the waveform spectrogram to place the cursor, and punch-in resume recording right from there.
+
+7
+00:00:40,500 --> 00:00:46,000
+...my research on sobriety through co-design in deep learning, and so on.
+
+8
+00:00:46,500 --> 00:00:52,000
+We can navigate across the slides and record the respective audio takes for each slide.
+
+9
+00:00:52,500 --> 00:00:55,500
+Let's do this quickly...
+
+10
+00:00:56,000 --> 00:00:59,799
+...Teaching is at the heart of my activities, blah, blah, blah...
+
+11
+00:01:00,200 --> 00:01:04,000
+...And finally on Slide 4, presenting the BRAIN research team. Done.
+
+12
+00:01:04,500 --> 00:01:14,799
+Now we have our 4 audio takes! Once done, I can export the full 1080p MP4 video with perfectly synced audio on every slide.
+
+13
+00:01:15,200 --> 00:01:23,000
+There it is! And now I can open the generated video. You might not hear the desktop audio here, but I guarantee it works smoothly.
+
+14
+00:01:23,500 --> 00:01:32,500
+So it's super simple to use, works directly with any PDF, and it's open-source for everyone. See you around!
