@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+temp_segments/
+temp_*.wav
+temp_*.webm
+temp_*.dat
+*.mp4
