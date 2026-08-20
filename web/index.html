@@ -1146,6 +1146,8 @@
         // WAVEFORM RENDERING & INTERACTIVE PLAYHEAD
         // ==========================================
 
+        let isDraggingPlayhead = false;
+
         function drawWaveform() {
             const w = canvas.width;
             const h = canvas.height;
@@ -1158,24 +1160,7 @@
             const dur = numSamples > 0 ? numSamples / sampleRate : 0;
             totalDuration = dur;
 
-            canvasCtx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
-            canvasCtx.fillStyle = 'rgba(148, 163, 184, 0.5)';
-            canvasCtx.font = `${Math.floor(10 * (window.devicePixelRatio || 1))}px JetBrains Mono`;
-            canvasCtx.lineWidth = 1;
-
-            const maxTime = Math.max(dur, 10);
-            const timeStep = maxTime > 40 ? 10 : (maxTime > 15 ? 5 : 2);
-
-            for (let t = 0; t <= maxTime; t += timeStep) {
-                const x = (t / maxTime) * w;
-                canvasCtx.beginPath();
-                canvasCtx.moveTo(x, 0);
-                canvasCtx.lineTo(x, h);
-                canvasCtx.stroke();
-                canvasCtx.fillText(`${t}s`, x + 4, h - 6);
-            }
-
-            if (numSamples === 0) {
+            if (numSamples === 0 || dur === 0) {
                 canvasCtx.strokeStyle = 'rgba(6, 182, 212, 0.2)';
                 canvasCtx.beginPath();
                 canvasCtx.moveTo(0, h / 2);
@@ -1185,9 +1170,26 @@
                 return;
             }
 
+            // Draw time grid
+            canvasCtx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+            canvasCtx.fillStyle = 'rgba(148, 163, 184, 0.6)';
+            canvasCtx.font = `${Math.floor(10 * (window.devicePixelRatio || 1))}px JetBrains Mono`;
+            canvasCtx.lineWidth = 1;
+
+            const timeStep = dur > 40 ? 10 : (dur > 15 ? 5 : (dur > 5 ? 2 : 1));
+
+            for (let t = 0; t <= dur; t += timeStep) {
+                const x = (t / dur) * w;
+                canvasCtx.beginPath();
+                canvasCtx.moveTo(x, 0);
+                canvasCtx.lineTo(x, h);
+                canvasCtx.stroke();
+                canvasCtx.fillText(`${t}s`, x + 4, h - 6);
+            }
+
             const midY = h / 2;
             const samplesPerPixel = Math.max(1, Math.floor(numSamples / w));
-            const playheadX = Math.min(w, (playheadPosition / maxTime) * w);
+            const playheadX = Math.max(0, Math.min(w, (playheadPosition / dur) * w));
 
             for (let x = 0; x < w; x++) {
                 const startSample = Math.floor((x / w) * numSamples);
@@ -1206,9 +1208,9 @@
                 const topY = midY - barHeight / 2;
 
                 if (x <= playheadX) {
-                    canvasCtx.fillStyle = '#06B6D4'; // Cyan
+                    canvasCtx.fillStyle = '#06B6D4'; // Cyan for past/played
                 } else {
-                    canvasCtx.fillStyle = '#334E68'; // Muted
+                    canvasCtx.fillStyle = '#334E68'; // Muted dark blue
                 }
 
                 canvasCtx.fillRect(x, topY, 1.5, barHeight);
@@ -1232,19 +1234,42 @@
             document.getElementById('durTimeLabel').textContent = formatSec(totalDuration);
         }
 
-        function onCanvasClick(e) {
+        function setPlayheadFromMouseEvent(e) {
             if (recordingState === 'recording' || recordingState === 'saving') return;
-            if (currentSamples.length === 0) return;
+            if (currentSamples.length === 0 || totalDuration <= 0) return;
 
             const rect = canvas.getBoundingClientRect();
             const clickX = e.clientX - rect.left;
             const ratio = Math.max(0, Math.min(1, clickX / rect.width));
 
             playheadPosition = ratio * totalDuration;
-            stopPlayback();
             drawWaveform();
             updateControlUI();
         }
+
+        function onCanvasClick(e) {
+            stopPlayback();
+            setPlayheadFromMouseEvent(e);
+        }
+
+        const canvasContainer = document.getElementById('canvasContainer');
+        canvasContainer.addEventListener('mousedown', (e) => {
+            isDraggingPlayhead = true;
+            stopPlayback();
+            setPlayheadFromMouseEvent(e);
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (isDraggingPlayhead) {
+                setPlayheadFromMouseEvent(e);
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            if (isDraggingPlayhead) {
+                isDraggingPlayhead = false;
+            }
+        });
 
         function updatePlayheadBadge(sec) {
             const badge = document.getElementById('playheadTimeBadge');
