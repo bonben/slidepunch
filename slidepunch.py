@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SlideCast — Standalone, zero-dependency slide-by-slide presentation recording studio.
+SlidePunch — Standalone, zero-dependency slide-by-slide presentation recording studio.
 Features:
 - Multi-project management
 - PDF slide set import (automatic extraction via pdftoppm)
@@ -278,7 +278,7 @@ def render_project_video(project_id):
     
     return True, f"Vidéo générée avec succès : {output_video.name}"
 
-class SlideCastHandler(SimpleHTTPRequestHandler):
+class SlidePunchHandler(SimpleHTTPRequestHandler):
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
@@ -496,10 +496,10 @@ class SlideCastHandler(SimpleHTTPRequestHandler):
 def main():
     ensure_base_dirs()
     server_address = ("", PORT)
-    httpd = HTTPServer(server_address, SlideCastHandler)
+    httpd = HTTPServer(server_address, SlidePunchHandler)
     url = f"http://localhost:{PORT}"
     print("\n" + "="*70)
-    print("🎙️  SlideCast — Studio d'Enregistrement Présentation Slide-par-Slide")
+    print("🎙️  SlidePunch — Studio d'Enregistrement Présentation Slide-par-Slide")
     print(f"👉 Interface Web : {url}")
     print(f"📁 Dossier Projets : {PROJECTS_DIR}")
     print("="*70 + "\n")
@@ -513,7 +513,7 @@ def main():
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
-        print("\n[SlideCast] Arrêt du serveur.")
+        print("\n[SlidePunch] Arrêt du serveur.")
         httpd.server_close()
 
 if __name__ == "__main__":

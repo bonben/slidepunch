@@ -1,4 +1,4 @@
-# 🎙️ SlideCast
+# 🎙️ SlidePunch
 
 > **Frugal, zero-dependency slide-by-slide presentation recording studio with live waveform, punch-in audio repair, synchronized teleprompter, and 1-click 1080p MP4 video rendering.**
 
@@ -33,11 +33,11 @@
   brew install ffmpeg poppler
   ```
 
-### 2. Launch SlideCast
+### 2. Launch SlidePunch
 ```bash
-git clone https://github.com/bonben/slidecast.git
-cd slidecast
-python3 slidecast.py
+git clone https://github.com/bonben/slidepunch.git
+cd slidepunch
+python3 slidepunch.py
 ```
 Open **[http://localhost:8080](http://localhost:8080)** in your browser (Chrome, Firefox, Edge, Safari).
 
