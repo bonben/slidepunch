@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SlidePunch — Studio d'Enregistrement de Présentations Slide-par-Slide</title>
+    <title>SlidePunch — Slide-by-Slide Presentation Recording Studio</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -49,6 +49,7 @@
             justify-content: space-between;
             border-bottom: 3px solid var(--brand-cyan);
             flex-shrink: 0;
+            gap: 16px;
         }
 
         .brand {
@@ -124,6 +125,26 @@
             display: flex;
             align-items: center;
             gap: 16px;
+        }
+
+        .btn-lang {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.15s;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .btn-lang:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: var(--brand-cyan);
         }
 
         .progress-stats {
@@ -780,24 +801,27 @@
     <!-- Header -->
     <header>
         <div class="brand">
-            <h1>SlidePunch</h1>
+            <h1>SlidePunch 🥊</h1>
             <span class="badge">Studio</span>
         </div>
 
         <div class="project-selector-wrap">
-            <span style="font-size:0.8rem; color:#94A3B8;">Projet :</span>
+            <span style="font-size:0.8rem; color:#94A3B8;" id="txtProjectLabel">Project:</span>
             <select class="project-select" id="projectSelect" onchange="onProjectChange(this.value)">
                 <option value="hdr_demo">Sobriety through Co-design in Deep Learning (4 slides)</option>
             </select>
-            <button class="btn-new-proj" onclick="openNewProjectModal()">+ Nouveau</button>
+            <button class="btn-new-proj" id="btnNewProj" onclick="openNewProjectModal()">+ New</button>
         </div>
 
         <div class="global-actions">
+            <button class="btn-lang" id="btnLangToggle" onclick="toggleLanguage()" title="Switch Language">
+                <span id="langFlag">🇫🇷</span> <span id="langText">FR</span>
+            </button>
             <div class="progress-stats" id="globalStats">
-                Chargement...
+                Loading...
             </div>
             <button class="btn-export" id="btnExportVideo" onclick="generateVideo()">
-                <span>🎬</span> Exporter la Vidéo (MP4)
+                <span>🎬</span> <span id="txtExportVideo">Export Video (MP4)</span>
             </button>
         </div>
     </header>
@@ -808,7 +832,7 @@
         <!-- Sidebar: Slides list -->
         <div class="sidebar">
             <div class="sidebar-header">
-                <span>Diapositives</span>
+                <span id="txtSlidesHeader">Slides</span>
                 <span id="slideCountBadge" style="font-size:0.75rem; color:var(--text-muted);">0</span>
             </div>
             <div id="slidesList"></div>
@@ -817,11 +841,11 @@
         <!-- Center: Slide Preview -->
         <div class="preview-pane">
             <div class="slide-img-container">
-                <img id="currentSlideImg" src="" alt="Aperçu diapositive">
+                <img id="currentSlideImg" src="" alt="Slide Preview">
             </div>
             <div class="preview-nav">
-                <button class="nav-btn" onclick="prevSlide()">◀ Précédente (←)</button>
-                <button class="nav-btn" onclick="nextSlide()">Suivante (→) ▶</button>
+                <button class="nav-btn" id="btnPrevSlide" onclick="prevSlide()">◀ Previous (←)</button>
+                <button class="nav-btn" id="btnNextSlide" onclick="nextSlide()">Next (→) ▶</button>
             </div>
         </div>
 
@@ -830,26 +854,26 @@
             <div class="prompter-header">
                 <div class="prompter-title-wrap">
                     <div class="prompter-title" id="prompterSlideTitle">Slide 1</div>
-                    <div class="target-pill" id="prompterTarget">Cible: 1:00</div>
+                    <div class="target-pill" id="prompterTarget">Target: 1:00</div>
                 </div>
                 <div class="prompter-toolbar">
-                    <span class="save-indicator" id="saveIndicator">Sauvegardé ✓</span>
-                    <button class="btn-font" title="Diminuer police" onclick="changeFontSize(-1)">A-</button>
-                    <button class="btn-font" title="Agrandir police" onclick="changeFontSize(1)">A+</button>
+                    <span class="save-indicator" id="saveIndicator">Saved ✓</span>
+                    <button class="btn-font" title="Decrease font" onclick="changeFontSize(-1)">A-</button>
+                    <button class="btn-font" title="Increase font" onclick="changeFontSize(1)">A+</button>
                 </div>
             </div>
             <div class="prompter-container">
                 <textarea 
                     class="prompter-textarea" 
                     id="prompterScript" 
-                    placeholder="Écrivez ou modifiez le script de cette slide ici..."
+                    placeholder="Write or edit the speech script for this slide here..."
                     oninput="handleScriptInput()"
                     onblur="saveCurrentScript()"
                 ></textarea>
             </div>
             <div class="prompter-hint">
-                <span>✏️ <strong>Script modifiable</strong> (auto-sauvegardé dans notes.md)</span>
-                <span>💡 Cliquez en dehors pour réactiver <kbd>Espace</kbd></span>
+                <span id="txtPrompterHint1">✏️ <strong>Editable script</strong> (auto-saved to notes.md)</span>
+                <span id="txtPrompterHint2">💡 Click outside to re-enable <kbd>Space</kbd></span>
             </div>
         </div>
 
@@ -862,11 +886,11 @@
         <div class="waveform-section">
             <div class="waveform-header">
                 <div class="waveform-info">
-                    <span>📊 <strong>Forme d'onde</strong> (cliquez pour déplacer la tête de lecture ou reprendre l'enregistrement)</span>
+                    <span id="txtWaveformTitle">📊 <strong>Waveform</strong> (click to move playhead or resume recording)</span>
                     <span class="playhead-badge" id="playheadTimeBadge">00:00.0</span>
                 </div>
                 <div id="waveformHint" style="color:#94A3B8;">
-                    Cliquez sur la forme d'onde pour déplacer le curseur et relancer depuis cet endroit précis.
+                    Click on the waveform to place the cursor and punch-in from this exact spot.
                 </div>
             </div>
             <div class="canvas-container" id="canvasContainer" onclick="onCanvasClick(event)">
@@ -879,7 +903,7 @@
             <!-- Left: VU Meter -->
             <div class="dock-left">
                 <div class="vu-container">
-                    <div class="vu-label">Niveau Micro</div>
+                    <div class="vu-label" id="txtMicLevel">Mic Level</div>
                     <div class="vu-bar-wrapper">
                         <div class="vu-bar" id="vuBar"></div>
                     </div>
@@ -891,32 +915,32 @@
                 
                 <!-- Start recording (from 0:00) -->
                 <button class="btn-ctl btn-rec-start" id="btnStartRec" onclick="startFreshRecording()">
-                    <span>●</span> <span id="startRecLabel">Enregistrer (Espace)</span>
+                    <span>●</span> <span id="startRecLabel">Record (Space)</span>
                 </button>
 
                 <!-- Punch-in button (resume from playhead) -->
                 <button class="btn-ctl btn-rec-punchin" id="btnPunchInRec" style="display:none;" onclick="startPunchInRecording()">
-                    <span>🔴</span> <span id="punchInLabel">Reprendre à 00:00.0</span>
+                    <span>🔴</span> <span id="punchInLabel">Resume at 00:00.0</span>
                 </button>
 
                 <!-- Pause button -->
                 <button class="btn-ctl btn-rec-pause" id="btnPauseRec" style="display:none;" onclick="pauseRecording()">
-                    <span>⏸</span> <span>Mettre en Pause (P)</span>
+                    <span>⏸</span> <span id="txtPauseBtn">Pause (P)</span>
                 </button>
 
                 <!-- Resume button -->
                 <button class="btn-ctl btn-rec-resume" id="btnResumeRec" style="display:none;" onclick="resumeRecording()">
-                    <span>▶</span> <span>Reprendre (P)</span>
+                    <span>▶</span> <span id="txtResumeBtn">Resume (P)</span>
                 </button>
 
                 <!-- Finalize button -->
                 <button class="btn-ctl btn-rec-finish" id="btnFinishRec" style="display:none;" onclick="finishRecording()">
-                    <span>⏹</span> <span>Terminer & Valider (Entrée)</span>
+                    <span>⏹</span> <span id="txtFinishBtn">Finish & Save (Enter)</span>
                 </button>
 
                 <!-- Cancel button -->
                 <button class="btn-ctl btn-rec-cancel" id="btnCancelRec" style="display:none;" onclick="cancelRecording()">
-                    <span>✖</span> <span>Annuler</span>
+                    <span>✖</span> <span id="txtCancelBtn">Cancel</span>
                 </button>
 
                 <div class="timer-display" id="timerDisplay">00:00</div>
@@ -926,8 +950,8 @@
             <div class="dock-right">
                 <div class="audio-player-box" id="customAudioPlayer">
                     <button class="btn-play-pause" id="btnPlayPause" onclick="togglePlayAudio()">▶</button>
-                    <button class="btn-skip" title="Reculer 5s" onclick="skipAudio(-5)">-5s</button>
-                    <button class="btn-skip" title="Avancer 5s" onclick="skipAudio(5)">+5s</button>
+                    <button class="btn-skip" title="Skip back 5s" onclick="skipAudio(-5)">-5s</button>
+                    <button class="btn-skip" title="Skip forward 5s" onclick="skipAudio(5)">+5s</button>
                     <span class="time-label" id="curTimeLabel">00:00</span>
                     <span style="color:#CBD5E1;">/</span>
                     <span class="time-label" id="durTimeLabel">00:00</span>
@@ -940,23 +964,23 @@
     <!-- Modal New Project (PDF Import) -->
     <div class="modal-overlay" id="newProjectModal">
         <div class="modal-card">
-            <div class="modal-title">Créer un Nouveau Projet</div>
+            <div class="modal-title" id="txtModalNewTitle">Create New Project</div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label class="form-label">Titre du Projet :</label>
-                    <input type="text" id="newProjTitle" class="form-input" placeholder="ex: Ma Présentation Conférence 2026">
+                    <label class="form-label" id="txtModalTitleLabel">Project Title:</label>
+                    <input type="text" id="newProjTitle" class="form-input" placeholder="e.g. My Conference Presentation 2026">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Fichier PDF des Diapositives :</label>
+                    <label class="form-label" id="txtModalPdfLabel">Slide PDF File:</label>
                     <div class="file-dropzone" onclick="document.getElementById('pdfFileInput').click()">
                         <input type="file" id="pdfFileInput" accept="application/pdf" style="display:none;" onchange="onPdfFileSelected(this)">
-                        <div id="dropzoneText">📄 <strong>Cliquez pour choisir un PDF</strong><br><small style="color:var(--text-muted);">Extraction automatique des diapositives en 1080p</small></div>
+                        <div id="dropzoneText">📄 <strong>Click to choose a PDF</strong><br><small style="color:var(--text-muted);">Automatic 1080p slide extraction</small></div>
                     </div>
                 </div>
             </div>
             <div style="display:flex; justify-content:flex-end; gap:10px;">
-                <button class="nav-btn" onclick="closeNewProjectModal()">Annuler</button>
-                <button class="btn-export" id="btnSubmitNewProj" onclick="submitNewProject()">Créer le Projet</button>
+                <button class="nav-btn" id="btnModalCancel" onclick="closeNewProjectModal()">Cancel</button>
+                <button class="btn-export" id="btnSubmitNewProj" onclick="submitNewProject()">Create Project</button>
             </div>
         </div>
     </div>
@@ -964,14 +988,157 @@
     <!-- Modal progress / message -->
     <div class="modal-overlay" id="modalOverlay">
         <div class="modal-card">
-            <div class="modal-title" id="modalTitle">Génération en cours...</div>
+            <div class="modal-title" id="modalTitle">Processing...</div>
             <div id="modalSpinner" class="spinner"></div>
-            <div class="modal-body" id="modalMsg" style="text-align:center;">Traitement en cours...</div>
-            <button class="btn-export" id="modalCloseBtn" style="display:none; margin: 0 auto;" onclick="closeModal()">Fermer</button>
+            <div class="modal-body" id="modalMsg" style="text-align:center;">Please wait...</div>
+            <button class="btn-export" id="modalCloseBtn" style="display:none; margin: 0 auto;" onclick="closeModal()">Close</button>
         </div>
     </div>
 
     <script>
+        // Internationalization (i18n) dictionary
+        const i18n = {
+            en: {
+                projectLabel: "Project:",
+                newProjectBtn: "+ New",
+                exportVideoBtn: "Export Video (MP4)",
+                slidesHeader: "Slides",
+                todoBadge: "To Do",
+                targetPrefix: "Target:",
+                savedBadge: "Saved ✓",
+                savingBadge: "Saving...",
+                prompterPlaceholder: "Write or edit the speech script for this slide here...",
+                prompterHint1: "✏️ <strong>Editable script</strong> (auto-saved to notes.md)",
+                prompterHint2: "💡 Click outside to re-enable <kbd>Space</kbd>",
+                waveformTitle: "📊 <strong>Waveform</strong> (click to move playhead or resume recording)",
+                waveformHint: "Click on the waveform to place the cursor and punch-in from this exact spot.",
+                micLevel: "Mic Level",
+                recordStart: "Record (Space)",
+                reRecordAll: "Re-record All (Space)",
+                punchInResume: "Resume at",
+                pauseBtn: "Pause (P)",
+                resumeBtn: "Resume (P)",
+                finishBtn: "Finish & Save (Enter)",
+                cancelBtn: "Cancel",
+                savingTimer: "Saving...",
+                prevBtn: "◀ Previous (←)",
+                nextBtn: "Next (→) ▶",
+                modalNewTitle: "Create New Project",
+                modalTitleLabel: "Project Title:",
+                modalPdfLabel: "Slide PDF File:",
+                modalDropzoneText: "📄 <strong>Click to choose a PDF</strong><br><small style=\"color:var(--text-muted);\">Automatic 1080p slide extraction</small>",
+                modalCancel: "Cancel",
+                modalSubmit: "Create Project",
+                modalImportingTitle: "Importing PDF...",
+                modalImportingMsg: "Converting PDF slides into high-resolution images with pdftoppm. Please wait...",
+                modalGeneratingTitle: "Generating 1080p Video...",
+                modalGeneratingMsg: "FFmpeg is stitching your slide images and audio into a 1080p MP4 video. Please wait...",
+                modalSuccessTitle: "🎉 Video Generated!",
+                modalSuccessMsg: "Video successfully assembled!<br><br><a href=\"{url}\" target=\"_blank\" style=\"color:var(--brand-cyan); font-weight:700; font-size:1.1rem;\">▶ Download / Watch Video</a>",
+                modalErrorTitle: "❌ Error",
+                closeBtn: "Close",
+                recordedStats: "recorded",
+                confirmPendingGen: "There are {count} slide(s) without audio.\nDo you want to generate the video anyway?",
+                confirmCancelRec: "A recording is in progress. Do you want to cancel it to switch slides?"
+            },
+            fr: {
+                projectLabel: "Projet :",
+                newProjectBtn: "+ Nouveau",
+                exportVideoBtn: "Exporter la Vidéo (MP4)",
+                slidesHeader: "Diapositives",
+                todoBadge: "À faire",
+                targetPrefix: "Cible :",
+                savedBadge: "Sauvegardé ✓",
+                savingBadge: "Enregistrement...",
+                prompterPlaceholder: "Écrivez ou modifiez le script de cette slide ici...",
+                prompterHint1: "✏️ <strong>Script modifiable</strong> (auto-sauvegardé dans notes.md)",
+                prompterHint2: "💡 Cliquez en dehors pour réactiver <kbd>Espace</kbd>",
+                waveformTitle: "📊 <strong>Forme d'onde</strong> (cliquez pour déplacer la tête de lecture ou reprendre l'enregistrement)",
+                waveformHint: "Cliquez sur la forme d'onde pour déplacer le curseur et relancer depuis cet endroit précis.",
+                micLevel: "Niveau Micro",
+                recordStart: "Enregistrer (Espace)",
+                reRecordAll: "Tout Réenregistrer (Espace)",
+                punchInResume: "Reprendre à",
+                pauseBtn: "Mettre en Pause (P)",
+                resumeBtn: "Reprendre (P)",
+                finishBtn: "Terminer & Valider (Entrée)",
+                cancelBtn: "Annuler",
+                savingTimer: "Sauvegarde...",
+                prevBtn: "◀ Précédente (←)",
+                nextBtn: "Suivante (→) ▶",
+                modalNewTitle: "Créer un Nouveau Projet",
+                modalTitleLabel: "Titre du Projet :",
+                modalPdfLabel: "Fichier PDF des Diapositives :",
+                modalDropzoneText: "📄 <strong>Cliquez pour choisir un PDF</strong><br><small style=\"color:var(--text-muted);\">Extraction automatique des diapositives en 1080p</small>",
+                modalCancel: "Annuler",
+                modalSubmit: "Créer le Projet",
+                modalImportingTitle: "Importation du PDF...",
+                modalImportingMsg: "Conversion des diapositives PDF en images haute résolution avec pdftoppm. Veuillez patienter...",
+                modalGeneratingTitle: "Génération de la Vidéo 1080p...",
+                modalGeneratingMsg: "FFmpeg assemble vos diapositives et enregistrements audio en 1080p. Veuillez patienter...",
+                modalSuccessTitle: "🎉 Vidéo Générée !",
+                modalSuccessMsg: "La vidéo a été assemblée avec succès !<br><br><a href=\"{url}\" target=\"_blank\" style=\"color:var(--brand-cyan); font-weight:700; font-size:1.1rem;\">▶ Télécharger / Visionner la vidéo</a>",
+                modalErrorTitle: "❌ Erreur",
+                closeBtn: "Fermer",
+                recordedStats: "enregistrées",
+                confirmPendingGen: "Il reste {count} diapositive(s) sans audio.\nVoulez-vous générer la vidéo quand même ?",
+                confirmCancelRec: "Un enregistrement est en cours. Voulez-vous l'annuler pour changer de slide ?"
+            }
+        };
+
+        let currentLang = localStorage.getItem('slidepunch_lang') || 'en';
+
+        function t(key) {
+            return i18n[currentLang][key] || key;
+        }
+
+        function toggleLanguage() {
+            currentLang = currentLang === 'en' ? 'fr' : 'en';
+            localStorage.setItem('slidepunch_lang', currentLang);
+            applyLanguage();
+        }
+
+        function applyLanguage() {
+            document.documentElement.lang = currentLang;
+            document.getElementById('langFlag').textContent = currentLang === 'en' ? '🇫🇷' : '🇬🇧';
+            document.getElementById('langText').textContent = currentLang === 'en' ? 'FR' : 'EN';
+            
+            document.getElementById('txtProjectLabel').textContent = t('projectLabel');
+            document.getElementById('btnNewProj').textContent = t('newProjectBtn');
+            document.getElementById('txtExportVideo').textContent = t('exportVideoBtn');
+            document.getElementById('txtSlidesHeader').textContent = t('slidesHeader');
+            document.getElementById('btnPrevSlide').textContent = t('prevBtn');
+            document.getElementById('btnNextSlide').textContent = t('nextBtn');
+            document.getElementById('txtPrompterHint1').innerHTML = t('prompterHint1');
+            document.getElementById('txtPrompterHint2').innerHTML = t('prompterHint2');
+            document.getElementById('txtWaveformTitle').innerHTML = t('waveformTitle');
+            document.getElementById('waveformHint').textContent = t('waveformHint');
+            document.getElementById('txtMicLevel').textContent = t('micLevel');
+            document.getElementById('txtPauseBtn').textContent = t('pauseBtn');
+            document.getElementById('txtResumeBtn').textContent = t('resumeBtn');
+            document.getElementById('txtFinishBtn').textContent = t('finishBtn');
+            document.getElementById('txtCancelBtn').textContent = t('cancelBtn');
+            
+            document.getElementById('txtModalNewTitle').textContent = t('modalNewTitle');
+            document.getElementById('txtModalTitleLabel').textContent = t('modalTitleLabel');
+            document.getElementById('txtModalPdfLabel').textContent = t('modalPdfLabel');
+            document.getElementById('btnModalCancel').textContent = t('modalCancel');
+            document.getElementById('btnSubmitNewProj').textContent = t('modalSubmit');
+            document.getElementById('modalCloseBtn').textContent = t('closeBtn');
+
+            if (!selectedPdfBytes) {
+                document.getElementById('dropzoneText').innerHTML = t('modalDropzoneText');
+            }
+
+            renderSidebar();
+            updateControlUI();
+            updateGlobalStats();
+            
+            if (slides[currentIndex]) {
+                document.getElementById('prompterTarget').textContent = `${t('targetPrefix')} ${slides[currentIndex].targetTime}`;
+            }
+        }
+
         let currentProjectId = "hdr_demo";
         let projects = [];
         let slides = [];
@@ -1006,6 +1173,7 @@
             window.addEventListener('resize', resizeCanvas);
             resizeCanvas();
 
+            applyLanguage();
             await loadProjectsList();
             await loadProject(currentProjectId);
         }
@@ -1062,7 +1230,7 @@
                 item.className = `slide-item ${idx === currentIndex ? 'active' : ''}`;
                 item.onclick = () => {
                     if (recordingState !== 'idle') {
-                        const leave = confirm("Un enregistrement est en cours. Voulez-vous l'annuler pour changer de slide ?");
+                        const leave = confirm(t('confirmCancelRec'));
                         if (!leave) return;
                         cancelRecording();
                     }
@@ -1070,7 +1238,7 @@
                 };
 
                 const statusClass = s.hasAudio ? 'recorded' : 'pending';
-                const statusText = s.hasAudio ? `✓ ${formatSec(s.audioDuration)}` : 'À faire';
+                const statusText = s.hasAudio ? `✓ ${formatSec(s.audioDuration)}` : t('todoBadge');
 
                 item.innerHTML = `
                     <div class="slide-item-header">
@@ -1095,7 +1263,7 @@
 
             document.getElementById('currentSlideImg').src = slide.image + '&t=' + new Date().getTime();
             document.getElementById('prompterSlideTitle').textContent = `Slide ${slide.number} : ${slide.topic}`;
-            document.getElementById('prompterTarget').textContent = `Cible: ${slide.targetTime}`;
+            document.getElementById('prompterTarget').textContent = `${t('targetPrefix')} ${slide.targetTime}`;
             
             const textarea = document.getElementById('prompterScript');
             textarea.value = slide.script || '';
@@ -1208,9 +1376,9 @@
                 const topY = midY - barHeight / 2;
 
                 if (x <= playheadX) {
-                    canvasCtx.fillStyle = '#06B6D4'; // Cyan for past/played
+                    canvasCtx.fillStyle = '#06B6D4';
                 } else {
-                    canvasCtx.fillStyle = '#334E68'; // Muted dark blue
+                    canvasCtx.fillStyle = '#334E68';
                 }
 
                 canvasCtx.fillRect(x, topY, 1.5, barHeight);
@@ -1341,7 +1509,7 @@
                 }, 80);
 
             } catch (err) {
-                alert("Erreur accès microphone : " + err.message);
+                alert("Microphone Error : " + err.message);
                 recordingState = 'idle';
                 updateControlUI();
             }
@@ -1382,7 +1550,7 @@
             if (scriptProcessor) scriptProcessor.disconnect();
             if (micSource) micSource.disconnect();
 
-            document.getElementById('timerDisplay').textContent = 'Sauvegarde...';
+            document.getElementById('timerDisplay').textContent = t('savingTimer');
 
             const wavBlob = encodeWAV(currentSamples, sampleRate);
             await uploadWavBlob(wavBlob);
@@ -1421,12 +1589,12 @@
                     renderSidebar();
                     updateGlobalStats();
                 } else {
-                    alert("Erreur serveur : " + data.error);
+                    alert(t('modalErrorTitle') + " : " + data.error);
                     recordingState = 'idle';
                     updateControlUI();
                 }
             } catch (err) {
-                alert("Erreur upload WAV : " + err.message);
+                alert("Upload Error : " + err.message);
                 recordingState = 'idle';
                 updateControlUI();
             }
@@ -1534,17 +1702,17 @@
                 btnCancel.style.display = 'none';
 
                 if (currentSamples.length > 0) {
-                    startLabel.textContent = "Tout Réenregistrer (Espace)";
+                    startLabel.textContent = t('reRecordAll');
                     if (playheadPosition > 0.05 && playheadPosition < totalDuration) {
                         btnPunchIn.style.display = 'flex';
-                        punchLabel.textContent = `Reprendre à ${formatSecExact(playheadPosition)}`;
+                        punchLabel.textContent = `${t('punchInResume')} ${formatSecExact(playheadPosition)}`;
                     } else {
                         btnPunchIn.style.display = 'none';
                     }
                     timer.textContent = formatSec(totalDuration);
                     timer.style.color = '#15803D';
                 } else {
-                    startLabel.textContent = "Enregistrer (Espace)";
+                    startLabel.textContent = t('recordStart');
                     btnPunchIn.style.display = 'none';
                     timer.textContent = "00:00";
                     timer.style.color = 'var(--brand-navy)';
@@ -1566,7 +1734,7 @@
                 
                 if (playheadPosition > 0.05 && playheadPosition < totalDuration) {
                     btnPunchIn.style.display = 'flex';
-                    punchLabel.textContent = `Reprendre à ${formatSecExact(playheadPosition)}`;
+                    punchLabel.textContent = `${t('punchInResume')} ${formatSecExact(playheadPosition)}`;
                 } else {
                     btnPunchIn.style.display = 'none';
                 }
@@ -1622,7 +1790,7 @@
             slides[currentIndex].script = textarea.value;
 
             const indicator = document.getElementById('saveIndicator');
-            indicator.textContent = 'Enregistrement...';
+            indicator.textContent = t('savingBadge');
             indicator.className = 'save-indicator visible saving';
 
             if (saveTimeout) clearTimeout(saveTimeout);
@@ -1645,7 +1813,7 @@
                 const data = await res.json();
                 if (data.success) {
                     const indicator = document.getElementById('saveIndicator');
-                    indicator.textContent = 'Sauvegardé ✓';
+                    indicator.textContent = t('savedBadge');
                     indicator.className = 'save-indicator visible';
                     setTimeout(() => {
                         indicator.classList.remove('visible');
@@ -1665,7 +1833,7 @@
             const recordedCount = slides.filter(s => s.hasAudio).length;
             const totalSec = slides.reduce((acc, s) => acc + (s.audioDuration || 0), 0);
             document.getElementById('globalStats').innerHTML = `
-                <strong>${recordedCount} / ${slides.length}</strong> enregistrées &nbsp;|&nbsp; <strong>${formatMinSec(totalSec)}</strong>
+                <strong>${recordedCount} / ${slides.length}</strong> ${t('recordedStats')} &nbsp;|&nbsp; <strong>${formatMinSec(totalSec)}</strong>
             `;
         }
 
@@ -1684,7 +1852,7 @@
         function openNewProjectModal() {
             document.getElementById('newProjectModal').classList.add('active');
             document.getElementById('newProjTitle').value = '';
-            document.getElementById('dropzoneText').innerHTML = '📄 <strong>Cliquez pour choisir un PDF</strong><br><small style="color:var(--text-muted);">Extraction automatique des diapositives en 1080p</small>';
+            document.getElementById('dropzoneText').innerHTML = t('modalDropzoneText');
             selectedPdfBytes = null;
         }
 
@@ -1708,9 +1876,9 @@
         }
 
         async function submitNewProject() {
-            const title = document.getElementById('newProjTitle').value.trim() || 'Nouveau Projet';
+            const title = document.getElementById('newProjTitle').value.trim() || 'New Project';
             if (!selectedPdfBytes) {
-                alert("Veuillez sélectionner un fichier PDF de présentation.");
+                alert("Please select a presentation PDF file.");
                 return;
             }
 
@@ -1723,10 +1891,10 @@
             const closeBtn = document.getElementById('modalCloseBtn');
 
             modal.classList.add('active');
-            titleEl.textContent = 'Importation du PDF...';
+            titleEl.textContent = t('modalImportingTitle');
             spinner.style.display = 'block';
             closeBtn.style.display = 'none';
-            msg.textContent = "Conversion des diapositives PDF en images haute résolution avec pdftoppm. Veuillez patienter...";
+            msg.textContent = t('modalImportingMsg');
 
             const safeName = title.toLowerCase().replace(/[^a-z0-9]/g, '_');
 
@@ -1744,13 +1912,13 @@
                 } else {
                     spinner.style.display = 'none';
                     closeBtn.style.display = 'block';
-                    titleEl.textContent = '❌ Erreur';
-                    msg.textContent = data.error || "Impossible d'importer le PDF.";
+                    titleEl.textContent = t('modalErrorTitle');
+                    msg.textContent = data.error || "Cannot import PDF.";
                 }
             } catch (err) {
                 spinner.style.display = 'none';
                 closeBtn.style.display = 'block';
-                titleEl.textContent = '❌ Erreur';
+                titleEl.textContent = t('modalErrorTitle');
                 msg.textContent = err.message;
             }
         }
@@ -1762,7 +1930,7 @@
         async function generateVideo() {
             const pending = slides.filter(s => !s.hasAudio);
             if (pending.length > 0) {
-                const confirmGen = confirm(`Il reste ${pending.length} diapositive(s) sans audio.\nVoulez-vous générer la vidéo quand même ?`);
+                const confirmGen = confirm(t('confirmPendingGen').replace('{count}', pending.length));
                 if (!confirmGen) return;
             }
 
@@ -1773,10 +1941,10 @@
             const closeBtn = document.getElementById('modalCloseBtn');
 
             modal.classList.add('active');
-            title.textContent = 'Génération de la Vidéo 1080p...';
+            title.textContent = t('modalGeneratingTitle');
             spinner.style.display = 'block';
             closeBtn.style.display = 'none';
-            msg.textContent = 'FFmpeg assemble vos diapositives et enregistrements audio en 1080p. Veuillez patienter...';
+            msg.textContent = t('modalGeneratingMsg');
 
             try {
                 const res = await fetch(`/api/generate_video?project=${currentProjectId}`, { method: 'POST' });
@@ -1785,16 +1953,16 @@
                 closeBtn.style.display = 'block';
 
                 if (data.success) {
-                    title.textContent = '🎉 Vidéo Générée !';
-                    msg.innerHTML = `La vidéo a été assemblée avec succès !<br><br><a href="${data.videoUrl}" target="_blank" style="color:var(--brand-cyan); font-weight:700; font-size:1.1rem;">▶ Télécharger / Visionner la vidéo</a>`;
+                    title.textContent = t('modalSuccessTitle');
+                    msg.innerHTML = t('modalSuccessMsg').replace('{url}', data.videoUrl);
                 } else {
-                    title.textContent = '❌ Erreur';
-                    msg.textContent = data.message || "Erreur lors de la génération.";
+                    title.textContent = t('modalErrorTitle');
+                    msg.textContent = data.message || "Error generating video.";
                 }
             } catch (err) {
                 spinner.style.display = 'none';
                 closeBtn.style.display = 'block';
-                title.textContent = '❌ Erreur';
+                title.textContent = t('modalErrorTitle');
                 msg.textContent = err.message;
             }
         }
