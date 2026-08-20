@@ -3,17 +3,16 @@
 > **Frugal, zero-dependency slide-by-slide presentation recording studio with live waveform, punch-in audio repair, synchronized teleprompter, and 1-click 1080p MP4 video rendering.**
 
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=a1E1wGVw_uk" target="_blank">
-    <img src="https://img.youtube.com/vi/a1E1wGVw_uk/maxresdefault.jpg" alt="Watch SlidePunch Demo on YouTube" width="85%" style="border-radius:10px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);">
+  <a href="https://bonben.github.io/slidepunch/" target="_blank">
+    <img src="./app_screenshot.png" alt="SlidePunch — Live Web Studio" width="100%" style="border-radius:10px; box-shadow: 0 12px 35px rgba(0,0,0,0.25);">
   </a>
   <br><br>
-<p align="center">
   <a href="https://bonben.github.io/slidepunch/" target="_blank">
-    <img src="https://img.shields.io/badge/🚀%20Live%20Web%20App-Try%20in%20Browser%20(No%20Install)-06B6D4?style=for-the-badge" alt="Live Web App">
+    <img src="https://img.shields.io/badge/🚀%20Live%20Web%20App-Try%20in%20Browser%20(No%20Install)-06B6D4?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Live Web App">
   </a>
   &nbsp;
   <a href="https://www.youtube.com/watch?v=a1E1wGVw_uk" target="_blank">
-    <img src="https://img.shields.io/badge/YouTube-Watch%20Video%20Demo%20(1m35s)-red?style=for-the-badge&logo=youtube" alt="Watch Demo">
+    <img src="https://img.shields.io/badge/YouTube-Watch%20Demo%20Video%20(1m35s)-red?style=for-the-badge&logo=youtube" alt="Watch Demo">
   </a>
 </p>
 
