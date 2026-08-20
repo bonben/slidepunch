@@ -60,6 +60,7 @@
             display: flex;
             align-items: center;
             gap: 12px;
+            cursor: pointer;
         }
 
         .brand h1 {
@@ -218,13 +219,125 @@
             border-color: white;
         }
 
-        /* Main Workspace */
-        .workspace {
+        /* ==========================================
+           LANDING / UPLOAD SCREEN (Initial State)
+        ========================================== */
+        .landing-view {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 32px;
+            background: linear-gradient(180deg, #F8FAFC 0%, #E2E8F0 100%);
+            overflow-y: auto;
+        }
+
+        .landing-card {
+            background: white;
+            max-width: 760px;
+            width: 100%;
+            border-radius: 16px;
+            padding: 40px;
+            box-shadow: 0 20px 35px -10px rgba(15, 23, 42, 0.15), 0 1px 3px rgba(0,0,0,0.05);
+            border: 1px solid rgba(203, 213, 225, 0.8);
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        .landing-header h2 {
+            font-size: 1.85rem;
+            font-weight: 800;
+            color: var(--brand-navy);
+            letter-spacing: -0.02em;
+            margin-bottom: 8px;
+        }
+
+        .landing-header p {
+            font-size: 1rem;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+
+        .landing-dropzone {
+            border: 2.5px dashed #38BDF8;
+            background: #F0F9FF;
+            border-radius: 12px;
+            padding: 36px 24px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .landing-dropzone:hover, .landing-dropzone.dragover {
+            background: #E0F2FE;
+            border-color: var(--brand-accent);
+            transform: scale(1.01);
+        }
+
+        .dropzone-icon {
+            font-size: 3rem;
+        }
+
+        .dropzone-title {
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: var(--brand-navy);
+        }
+
+        .dropzone-sub {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .landing-features-grid {
             display: grid;
-            grid-template-columns: 240px 1.1fr 0.9fr;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-top: 8px;
+            text-align: left;
+        }
+
+        .feature-box {
+            background: #F8FAFC;
+            border: 1px solid var(--brand-border);
+            padding: 14px;
+            border-radius: 8px;
+        }
+
+        .feature-box h4 {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: var(--brand-navy);
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .feature-box p {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+
+        /* ==========================================
+           MAIN STUDIO WORKSPACE
+        ========================================== */
+        .workspace {
+            display: none; /* Shown once a project is active */
+            grid-template-columns: 260px 1.15fr 0.85fr;
             flex: 1;
             overflow: hidden;
             background: #F8FAFC;
+        }
+
+        .workspace.active {
+            display: grid;
         }
 
         /* Column 1: Slides Sidebar */
@@ -493,13 +606,17 @@
 
         /* Bottom Studio Dock: Waveform Timeline + Recording Controls */
         .studio-dock {
+            display: none; /* Shown once a project is active */
             background: white;
             border-top: 1px solid var(--brand-border);
-            display: flex;
             flex-direction: column;
             box-shadow: 0 -4px 15px rgba(0,0,0,0.04);
             flex-shrink: 0;
             z-index: 10;
+        }
+
+        .studio-dock.active {
+            display: flex;
         }
 
         /* Waveform Timeline */
@@ -841,16 +958,15 @@
 
     <!-- Header -->
     <header>
-        <div class="brand">
+        <div class="brand" onclick="showLandingView()">
             <h1>SlidePunch 🥊</h1>
             <span class="badge">Studio</span>
             <span class="mode-badge" id="appModeBadge">⚡ Native Server</span>
         </div>
 
-        <div class="project-selector-wrap">
+        <div class="project-selector-wrap" id="projectSelectorWrap" style="display:none;">
             <span style="font-size:0.8rem; color:#94A3B8;" id="txtProjectLabel">Project:</span>
             <select class="project-select" id="projectSelect" onchange="onProjectChange(this.value)">
-                <option value="hdr_demo">Sobriety through Co-design in Deep Learning (4 slides)</option>
             </select>
             <button class="btn-new-proj" id="btnNewProj" onclick="openNewProjectModal()">+ New</button>
         </div>
@@ -859,20 +975,54 @@
             <button class="btn-lang" id="btnLangToggle" onclick="toggleLanguage()" title="Switch Language">
                 <span id="langFlag">🇫🇷</span> <span id="langText">FR</span>
             </button>
-            <div class="progress-stats" id="globalStats">
+            <div class="progress-stats" id="globalStats" style="display:none;">
                 Loading...
             </div>
-            <button class="btn-export-zip" id="btnExportZip" onclick="exportProjectZip()" title="Download raw WAVs & notes.md as a ZIP archive">
+            <button class="btn-export-zip" id="btnExportZip" style="display:none;" onclick="exportProjectZip()" title="Download raw WAVs & notes.md as a ZIP archive">
                 <span>📦</span> <span id="txtExportZip">ZIP</span>
             </button>
-            <button class="btn-export" id="btnExportVideo" onclick="generateVideo()">
+            <button class="btn-export" id="btnExportVideo" style="display:none;" onclick="generateVideo()">
                 <span>🎬</span> <span id="txtExportVideo">Export Video</span>
             </button>
         </div>
     </header>
 
-    <!-- Main Workspace -->
-    <div class="workspace">
+    <!-- LANDING / UPLOAD SCREEN (Shown on first visit or when no project is open) -->
+    <div class="landing-view" id="landingView">
+        <div class="landing-card">
+            <div class="landing-header">
+                <h2 id="txtLandingTitle">🥊 SlidePunch Presentation Studio</h2>
+                <p id="txtLandingSub">Record your slides slide-by-slide with real-time waveform, surgical audio punch-in repair, and 1-click video export.</p>
+            </div>
+
+            <!-- Upload Dropzone -->
+            <div class="landing-dropzone" id="mainLandingDropzone" onclick="document.getElementById('landingPdfInput').click()">
+                <input type="file" id="landingPdfInput" accept="application/pdf" style="display:none;" onchange="onLandingPdfSelected(this)">
+                <div class="dropzone-icon">📄</div>
+                <div class="dropzone-title" id="txtDropzoneTitle">Drop your Presentation PDF here</div>
+                <div class="dropzone-sub" id="txtDropzoneSub">or click to browse from your computer (LaTeX Beamer, PowerPoint, Typst, Keynote)</div>
+            </div>
+
+            <!-- Quick Features -->
+            <div class="landing-features-grid">
+                <div class="feature-box">
+                    <h4 id="feat1Title">🔴 Audio Punch-In</h4>
+                    <p id="feat1Sub">Stumbled on a word? Click the waveform and resume recording seamlessly without redoing the slide.</p>
+                </div>
+                <div class="feature-box">
+                    <h4 id="feat2Title">✏️ Live Prompter</h4>
+                    <p id="feat2Sub">Synchronized editable speaker script next to your slide, auto-saved in Markdown.</p>
+                </div>
+                <div class="feature-box">
+                    <h4 id="feat3Title">🎬 1-Click Video</h4>
+                    <p id="feat3Sub">Exports a crisp 1080p presentation video with zero audio drift.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN STUDIO WORKSPACE -->
+    <div class="workspace" id="studioWorkspace">
         
         <!-- Sidebar: Slides list -->
         <div class="sidebar">
@@ -925,7 +1075,7 @@
     </div>
 
     <!-- Bottom Studio Dock: Waveform Timeline + Controls -->
-    <div class="studio-dock">
+    <div class="studio-dock" id="studioDock">
         
         <!-- Interactive Waveform Timeline / Spectrogram with Playhead -->
         <div class="waveform-section">
@@ -1078,6 +1228,16 @@
                 savingTimer: "Saving...",
                 prevBtn: "◀ Previous (←)",
                 nextBtn: "Next (→) ▶",
+                landingTitle: "🥊 SlidePunch Presentation Studio",
+                landingSub: "Record your presentation slide-by-slide with real-time waveform, surgical audio punch-in repair, and 1-click video export.",
+                dropzoneTitle: "Drop your Presentation PDF here",
+                dropzoneSub: "or click to browse from your computer (LaTeX Beamer, PowerPoint, Typst, Keynote)",
+                feat1Title: "🔴 Audio Punch-In",
+                feat1Sub: "Stumbled on a word? Click the waveform and resume recording seamlessly without redoing the slide.",
+                feat2Title: "✏️ Live Prompter",
+                feat2Sub: "Synchronized editable speaker script next to your slide, auto-saved in Markdown.",
+                feat3Title: "🎬 1-Click Video",
+                feat3Sub: "Exports a crisp 1080p presentation video with zero audio drift.",
                 modalNewTitle: "Create New Project",
                 modalTitleLabel: "Project Title:",
                 modalPdfLabel: "Slide PDF File:",
@@ -1124,6 +1284,16 @@
                 savingTimer: "Sauvegarde...",
                 prevBtn: "◀ Précédente (←)",
                 nextBtn: "Suivante (→) ▶",
+                landingTitle: "🥊 Studio de Présentation SlidePunch",
+                landingSub: "Enregistrez vos présentations slide-par-slide avec spectrogramme temps réel, réparation punch-in et export vidéo 1-clic.",
+                dropzoneTitle: "Déposez votre présentation PDF ici",
+                dropzoneSub: "ou cliquez pour choisir un fichier (LaTeX Beamer, PowerPoint, Typst, Keynote)",
+                feat1Title: "🔴 Réparation Punch-In",
+                feat1Sub: "Un bafouillage ? Cliquez sur le spectrogramme et reprenez instantanément sans tout recommencer.",
+                feat2Title: "✏️ Prompteur Direct",
+                feat2Sub: "Script de parole synchronisé à côté de vos slides, sauvegardé en Markdown.",
+                feat3Title: "🎬 Vidéo en 1 Clic",
+                feat3Sub: "Exporte une vidéo 1080p parfaitement calée sans montage.",
                 modalNewTitle: "Créer un Nouveau Projet",
                 modalTitleLabel: "Titre du Projet :",
                 modalPdfLabel: "Fichier PDF des Diapositives :",
@@ -1178,6 +1348,17 @@
             document.getElementById('txtResumeBtn').textContent = t('resumeBtn');
             document.getElementById('txtFinishBtn').textContent = t('finishBtn');
             document.getElementById('txtCancelBtn').textContent = t('cancelBtn');
+
+            document.getElementById('txtLandingTitle').textContent = t('landingTitle');
+            document.getElementById('txtLandingSub').textContent = t('landingSub');
+            document.getElementById('txtDropzoneTitle').textContent = t('dropzoneTitle');
+            document.getElementById('txtDropzoneSub').textContent = t('dropzoneSub');
+            document.getElementById('feat1Title').textContent = t('feat1Title');
+            document.getElementById('feat1Sub').textContent = t('feat1Sub');
+            document.getElementById('feat2Title').textContent = t('feat2Title');
+            document.getElementById('feat2Sub').textContent = t('feat2Sub');
+            document.getElementById('feat3Title').textContent = t('feat3Title');
+            document.getElementById('feat3Sub').textContent = t('feat3Sub');
             
             document.getElementById('txtModalNewTitle').textContent = t('modalNewTitle');
             document.getElementById('txtModalTitleLabel').textContent = t('modalTitleLabel');
@@ -1225,7 +1406,7 @@
                         database.createObjectStore('projects', { keyPath: 'id' });
                     }
                     if (!database.objectStoreNames.contains('slides')) {
-                        database.createObjectStore('slides', { keyPath: 'key' }); // key: `${projectId}_${slideNum}`
+                        database.createObjectStore('slides', { keyPath: 'key' });
                     }
                     if (!database.objectStoreNames.contains('audio')) {
                         database.createObjectStore('audio', { keyPath: 'key' });
@@ -1256,7 +1437,7 @@
         // ==========================================
         // APPLICATION STATE
         // ==========================================
-        let currentProjectId = "hdr_demo";
+        let currentProjectId = null;
         let projects = [];
         let slides = [];
         let currentIndex = 0;
@@ -1290,91 +1471,73 @@
             window.addEventListener('resize', resizeCanvas);
             resizeCanvas();
 
+            // Drag and drop listeners on landing card
+            setupLandingDragAndDrop();
+
             await detectBackend();
             if (!isServerMode) {
                 await openIndexedDB();
-                await ensureWebDemoData();
             }
 
             applyLanguage();
             await loadProjectsList();
-            await loadProject(currentProjectId);
+
+            if (projects.length > 0) {
+                currentProjectId = projects[0].id;
+                await loadProject(currentProjectId);
+            } else {
+                showLandingView();
+            }
         }
 
-        // ==========================================
-        // CLIENT-SIDE DEMO DATA GENERATOR (Web Mode)
-        // ==========================================
-        async function ensureWebDemoData() {
-            const tx = db.transaction(['projects', 'slides'], 'readonly');
-            const pStore = tx.objectStore('projects');
-            const countReq = pStore.count();
-            
-            const count = await new Promise(r => { countReq.onsuccess = () => r(countReq.result); });
-            if (count > 0) return; // already initialized
+        function showLandingView() {
+            document.getElementById('landingView').style.display = 'flex';
+            document.getElementById('studioWorkspace').classList.remove('active');
+            document.getElementById('studioDock').classList.remove('active');
+            document.getElementById('projectSelectorWrap').style.display = projects.length > 0 ? 'flex' : 'none';
+            document.getElementById('globalStats').style.display = 'none';
+            document.getElementById('btnExportZip').style.display = 'none';
+            document.getElementById('btnExportVideo').style.display = 'none';
+        }
 
-            console.log("--> Initializing Web Mode demo project...");
-            const demoProj = {
-                id: 'hdr_demo',
-                title: 'Sobriety through Co-design in Deep Learning',
-                slideCount: 4
-            };
+        function showStudioView() {
+            document.getElementById('landingView').style.display = 'none';
+            document.getElementById('studioWorkspace').classList.add('active');
+            document.getElementById('studioDock').classList.add('active');
+            document.getElementById('projectSelectorWrap').style.display = 'flex';
+            document.getElementById('globalStats').style.display = 'block';
+            document.getElementById('btnExportZip').style.display = 'flex';
+            document.getElementById('btnExportVideo').style.display = 'flex';
+            resizeCanvas();
+        }
 
-            const demoSlides = [
-                {
-                    number: 1,
-                    topic: 'Title & Introduction',
-                    targetTime: '0:45',
-                    script: "Bonjour à toutes et à tous. Je suis ravi de vous présenter aujourd'hui mes travaux d'Habilitation à Diriger des Recherches, intitulés Sobriété par le Co-design en Apprentissage Profond et Communications Numériques.\n\nDans cette soutenance, nous allons explorer comment l'adéquation algorithme-architecture permet de concevoir des systèmes d'intelligence artificielle frugaux, efficaces et déployables directement à la périphérie.",
-                    image: generateSlidePlaceholderSvg(1, "Sobriety through Co-design in Deep Learning", "Mathieu Léonardon — IMT Atlantique")
-                },
-                {
-                    number: 2,
-                    topic: 'Career Timeline & Background',
-                    targetTime: '1:15',
-                    script: "Pour commencer, voici un aperçu de mon parcours académique et de mes thématiques de recherche.\n\nAprès une formation d'ingénieur en électronique et une thèse à Bordeaux INP et Polytechnique Montréal sur les décodeurs polaires, j'ai rejoint IMT Atlantique en 2020 au sein du Lab-STICC.\n\nMes travaux s'articulent autour de l'apprentissage profond embarqué, de la compression de modèles, et du déploiement efficace sur circuits numériques et microcontrôleurs.",
-                    image: generateSlidePlaceholderSvg(2, "Career Timeline & Research Background", "Bordeaux INP → Polytechnique Montréal → IMT Atlantique (Lab-STICC)")
-                },
-                {
-                    number: 3,
-                    topic: 'Teaching & Pedagogical Innovation',
-                    targetTime: '1:00',
-                    script: "L'enseignement est au cœur de mes activités, avec environ 170 heures par an dispensées sur l'ensemble du cursus ingénieur.\n\nJ'interviens notamment en apprentissage profond, architectures numériques et programmation embarquée, en favorisant les projets pratiques et l'apprentissage par problèmes.",
-                    image: generateSlidePlaceholderSvg(3, "Teaching & Pedagogical Innovation", "170h / year • Deep Learning • Embedded Systems • Hardware-Software Co-design")
-                },
-                {
-                    number: 4,
-                    topic: 'BRAIN Team & Research Axes',
-                    targetTime: '1:15',
-                    script: "Voici la présentation de l'équipe BRAIN et de nos grands axes de recherche.\n\nNos travaux se concentrent sur la sobriété algorithmique, la quantification agressive, et l'implémentation sur microcontrôleurs simples comme les Cortex-M0+ et Cortex-M4.",
-                    image: generateSlidePlaceholderSvg(4, "BRAIN Team & Research Axes", "Algorithmic Sobriety • Ultra-low-power Edge AI • Microcontrollers")
+        function setupLandingDragAndDrop() {
+            const dropzone = document.getElementById('mainLandingDropzone');
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropzone.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    dropzone.classList.add('dragover');
+                }, false);
+            });
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropzone.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    dropzone.classList.remove('dragover');
+                }, false);
+            });
+            dropzone.addEventListener('drop', (e) => {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                if (files && files[0]) {
+                    processPdfImport(files[0]);
                 }
-            ];
-
-            const writeTx = db.transaction(['projects', 'slides'], 'readwrite');
-            writeTx.objectStore('projects').put(demoProj);
-            demoSlides.forEach(s => {
-                writeTx.objectStore('slides').put({
-                    key: `hdr_demo_${s.number}`,
-                    projectId: 'hdr_demo',
-                    ...s
-                });
             });
         }
 
-        function generateSlidePlaceholderSvg(num, title, subtitle) {
-            const svg = `
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080">
-                <rect width="1920" height="1080" fill="#0F172A"/>
-                <circle cx="960" cy="540" r="500" fill="none" stroke="rgba(6,182,212,0.15)" stroke-width="2"/>
-                <circle cx="960" cy="540" r="750" fill="none" stroke="rgba(2,132,199,0.1)" stroke-width="2"/>
-                <rect x="120" y="100" width="1680" height="880" rx="24" fill="rgba(30,41,59,0.7)" stroke="rgba(255,255,255,0.1)" stroke-width="2"/>
-                <text x="200" y="240" font-family="sans-serif" font-size="36" font-weight="700" fill="#06B6D4">SLIDE ${num}</text>
-                <text x="200" y="440" font-family="sans-serif" font-size="64" font-weight="800" fill="#FFFFFF">${title}</text>
-                <text x="200" y="560" font-family="sans-serif" font-size="36" font-weight="500" fill="#94A3B8">${subtitle}</text>
-                <text x="200" y="880" font-family="sans-serif" font-size="28" font-weight="600" fill="#64748B">SlidePunch Studio — Slide-by-Slide Recording</text>
-            </svg>
-            `;
-            return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+        function onLandingPdfSelected(input) {
+            if (input.files && input.files[0]) {
+                processPdfImport(input.files[0]);
+            }
         }
 
         // ==========================================
@@ -1406,6 +1569,10 @@
                 if (p.id === currentProjectId) opt.selected = true;
                 sel.appendChild(opt);
             });
+
+            if (projects.length > 0) {
+                document.getElementById('projectSelectorWrap').style.display = 'flex';
+            }
         }
 
         async function onProjectChange(projId) {
@@ -1446,14 +1613,20 @@
                 slides = filtered;
             }
 
-            document.getElementById('slideCountBadge').textContent = slides.length;
-            renderSidebar();
-            await loadSlide(0);
-            updateGlobalStats();
+            if (slides.length > 0) {
+                showStudioView();
+                document.getElementById('slideCountBadge').textContent = slides.length;
+                renderSidebar();
+                await loadSlide(0);
+                updateGlobalStats();
+            } else {
+                showLandingView();
+            }
         }
 
         function resizeCanvas() {
             const container = document.getElementById('canvasContainer');
+            if (!container) return;
             canvas.width = container.clientWidth * (window.devicePixelRatio || 1) || 800;
             canvas.height = container.clientHeight * (window.devicePixelRatio || 1) || 75;
             drawWaveform();
@@ -2163,15 +2336,27 @@
             }
         }
 
+        async function processPdfImport(file) {
+            const title = file.name.replace('.pdf', '').replace(/_/g, ' ');
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                selectedPdfBytes = e.target.result;
+                await submitNewProjectFromBytes(title, selectedPdfBytes);
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
         async function submitNewProject() {
             const title = document.getElementById('newProjTitle').value.trim() || 'New Project';
             if (!selectedPdfBytes) {
                 alert("Please select a presentation PDF file.");
                 return;
             }
-
             closeNewProjectModal();
+            await submitNewProjectFromBytes(title, selectedPdfBytes);
+        }
 
+        async function submitNewProjectFromBytes(title, pdfBytes) {
             const modal = document.getElementById('modalOverlay');
             const titleEl = document.getElementById('modalTitle');
             const msg = document.getElementById('modalMsg');
@@ -2190,7 +2375,7 @@
                 try {
                     const res = await fetch(`/api/projects/new?name=${safeName}&title=${encodeURIComponent(title)}`, {
                         method: 'POST',
-                        body: selectedPdfBytes
+                        body: pdfBytes
                     });
                     const data = await res.json();
                     if (data.success) {
@@ -2213,7 +2398,7 @@
             } else {
                 // Client-side PDF rendering using PDF.js
                 try {
-                    const loadingTask = pdfjsLib.getDocument({ data: selectedPdfBytes });
+                    const loadingTask = pdfjsLib.getDocument({ data: pdfBytes });
                     const pdfDoc = await loadingTask.promise;
                     const numPages = pdfDoc.numPages;
                     
