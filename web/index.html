@@ -1477,17 +1477,25 @@
             await detectBackend();
             if (!isServerMode) {
                 await openIndexedDB();
+                // Purge any legacy demo data from browser cache
+                try {
+                    const tx = db.transaction(['projects', 'slides', 'audio'], 'readwrite');
+                    tx.objectStore('projects').delete('hdr_demo');
+                    const sStore = tx.objectStore('slides');
+                    const req = sStore.getAll();
+                    req.onsuccess = () => {
+                        (req.result || []).forEach(s => {
+                            if (s.projectId === 'hdr_demo') sStore.delete(s.key);
+                        });
+                    };
+                } catch (e) {}
             }
 
             applyLanguage();
             await loadProjectsList();
 
-            if (projects.length > 0) {
-                currentProjectId = projects[0].id;
-                await loadProject(currentProjectId);
-            } else {
-                showLandingView();
-            }
+            // ALWAYS start on the clean landing upload page
+            showLandingView();
         }
 
         function showLandingView() {
