@@ -1,10 +1,23 @@
-# 🎙️ SlidePunch
+# 🎙️ SlidePunch 🥊
 
 > **Frugal, zero-dependency slide-by-slide presentation recording studio with live waveform, punch-in audio repair, synchronized teleprompter, and 1-click 1080p MP4 video rendering.**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Python: 3.8+](https://img.shields.io/badge/Python-3.8+-green.svg)](https://www.python.org/)
-[![Zero Dependencies](https://img.shields.io/badge/Dependencies-Zero%20pip%20packages-brightgreen.svg)](#requirements)
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=a1E1wGVw_uk" target="_blank">
+    <img src="https://img.youtube.com/vi/a1E1wGVw_uk/maxresdefault.jpg" alt="Watch SlidePunch Demo on YouTube" width="85%" style="border-radius:10px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);">
+  </a>
+  <br><br>
+  <a href="https://www.youtube.com/watch?v=a1E1wGVw_uk" target="_blank">
+    <img src="https://img.shields.io/badge/YouTube-Watch%20Video%20Demo%20(1m35s)-red?style=for-the-badge&logo=youtube" alt="Watch Demo">
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.8+-green.svg" alt="Python: 3.8+"></a>
+  <a href="#requirements"><img src="https://img.shields.io/badge/Dependencies-Zero%20pip%20packages-brightgreen.svg" alt="Zero Dependencies"></a>
+  <a href="https://github.com/bonben/slidepunch"><img src="https://img.shields.io/badge/UI-English%20%2F%20Fran%C3%A7ais-blueviolet.svg" alt="Bilingual EN/FR"></a>
+</p>
 
 ---
 
@@ -16,6 +29,7 @@
 - 🔴 **Sample-Accurate Punch-In Audio Repair:** Stumbled on a word at `00:14.2`? Click on the waveform, preview, and resume recording from that exact spot without re-recording the whole slide.
 - ✏️ **Synchronized Editable Teleprompter:** Live speech notes side-by-side with your slides, automatically saved to Markdown (`notes.md`).
 - 🎬 **1-Click 1080p Video Generation:** Stitches your slide images and audio into a professional 1080p MP4 video with high-quality audio and zero sync drift.
+- 🌐 **Bilingual Interface (EN / FR):** Instant one-click toggle between English and French.
 - 🪶 **Frugal & Standalone:** Pure Python standard library backend (`http.server`) + Vanilla JavaScript frontend. No heavy frameworks, no `npm install`, no external `pip` dependencies.
 
 ---
@@ -57,10 +71,10 @@ Open **[http://localhost:8080](http://localhost:8080)** in your browser (Chrome,
 ## 📁 Project Structure
 
 ```text
-slidecast/
-├── slidecast.py          # Standalone server & video compiler
+slidepunch/
+├── slidepunch.py         # Standalone server & video compiler
 ├── web/
-│   └── index.html        # Web studio interface
+│   └── index.html        # Web studio interface (Bilingual EN/FR)
 ├── projects/
 │   └── my_presentation/
 │       ├── metadata.json # Project metadata
@@ -70,6 +84,7 @@ slidecast/
 │       ├── notes.md      # Synchronized speaker notes
 │       └── presentation_complete.mp4 # Rendered video
 ├── README.md
+├── thumbnail.jpg
 └── LICENSE
 ```
 
