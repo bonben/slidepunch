@@ -68,27 +68,6 @@ def get_all_projects():
             })
     return projects
 
-def extract_slide_titles_from_pdf(pdf_path, num_pages):
-    titles = {}
-    for idx in range(1, num_pages + 1):
-        try:
-            res = subprocess.run(
-                ["pdftotext", "-f", str(idx), "-l", str(idx), str(pdf_path), "-"],
-                capture_output=True, text=True
-            )
-            raw_lines = [l.strip() for l in res.stdout.split("\n") if l.strip()]
-            filtered = [
-                l for l in raw_lines 
-                if not re.match(r'^\d+(\s*/\s*\d+)?$', l) and not l.lower().startswith("slide")
-            ]
-            if filtered:
-                candidate = filtered[0]
-                if len(candidate) <= 80:
-                    titles[idx] = candidate
-        except Exception:
-            pass
-    return titles
-
 def parse_project_slides(project_id):
     proj_dir = PROJECTS_DIR / project_id
     if not proj_dir.exists():
@@ -162,7 +141,7 @@ def parse_project_slides(project_id):
         slides.append({
             "number": idx,
             "title": custom_topic or f"Slide {idx}",
-            "topic": timing_info.get("topic", custom_topic),
+            "topic": custom_topic,
             "targetTime": timing_info.get("target", "1:00"),
             "cumulative": timing_info.get("cumulative", ""),
             "script": clean_script,
@@ -231,17 +210,12 @@ def create_project_from_pdf(project_name, pdf_bytes, title=None):
     }
     (proj_dir / "metadata.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     
-    # Extract real titles from PDF text
-    extracted_titles = extract_slide_titles_from_pdf(pdf_path, len(slide_images))
-    
-    # Create starter notes.md
+    # Create clean starter notes.md
     notes_path = proj_dir / "notes.md"
     if not notes_path.exists():
         notes_lines = [f"# {title or project_name}\n\n## Speaker Script\n\n"]
         for idx in range(1, len(slide_images) + 1):
-            custom_t = extracted_titles.get(idx, "")
-            header_str = f"### Slide {idx}: {custom_t}" if custom_t else f"### Slide {idx}"
-            notes_lines.append(f"{header_str}\n> Enter your speech script for Slide {idx} here...\n\n---\n\n")
+            notes_lines.append(f"### Slide {idx}\n> Enter your speech script for Slide {idx} here...\n\n---\n\n")
         notes_path.write_text("".join(notes_lines), encoding="utf-8")
         
     return safe_id

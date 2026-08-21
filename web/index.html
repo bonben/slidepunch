@@ -3074,25 +3074,12 @@
                         await page.render({ canvasContext: renderCtx, viewport: viewport }).promise;
                         const imgDataUrl = renderCanvas.toDataURL('image/png');
                         
-                        const textContent = await page.getTextContent();
-                        const rawLines = textContent.items
-                            .map(item => item.str.trim())
-                            .filter(str => str.length > 0 && !/^\d+(\s*\/\s*\d+)?$/.test(str));
-                        
-                        let detectedTitle = '';
-                        if (rawLines.length > 0) {
-                            const first = rawLines[0];
-                            if (first.length <= 80 && first.toLowerCase() !== `slide ${pageNum}` && first.toLowerCase() !== 'slide') {
-                                detectedTitle = first;
-                            }
-                        }
-
                         extractedSlides.push({
                             number: pageNum,
-                            topic: detectedTitle,
-                            title: detectedTitle || `Slide ${pageNum}`,
+                            topic: '',
+                            title: `Slide ${pageNum}`,
                             targetTime: '1:00',
-                            script: rawLines.join(' ').trim(),
+                            script: '',
                             image: imgDataUrl
                         });
                     }
