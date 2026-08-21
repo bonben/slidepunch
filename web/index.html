@@ -1855,10 +1855,21 @@
                 const barHeight = Math.max(2, (max - min) * midY * 0.95);
                 const topY = midY - barHeight / 2;
 
-                if (x <= playheadX) {
-                    canvasCtx.fillStyle = '#06B6D4';
+                if (recordingState === 'recording') {
+                    const sampleAtX = (x / w) * numSamples;
+                    if (sampleAtX < punchInStartSample) {
+                        canvasCtx.fillStyle = '#06B6D4'; // Original prefix
+                    } else if (sampleAtX <= playheadPosition * sampleRate) {
+                        canvasCtx.fillStyle = '#EF4444'; // Live newly recorded audio
+                    } else {
+                        canvasCtx.fillStyle = '#475569'; // Remaining downstream original audio
+                    }
                 } else {
-                    canvasCtx.fillStyle = '#334E68';
+                    if (x <= playheadX) {
+                        canvasCtx.fillStyle = '#06B6D4';
+                    } else {
+                        canvasCtx.fillStyle = '#334E68';
+                    }
                 }
 
                 canvasCtx.fillRect(x, topY, 1.5, barHeight);
@@ -1979,6 +1990,8 @@
         // 1-BUTTON RECORDING TOGGLE & IMMEDIATE AUTO-SAVE
         // ==========================================
 
+        let originalSamples = [];
+        let recordedChunkSamples = [];
         let punchInStartSample = 0;
 
         async function toggleRecording() {
@@ -1993,14 +2006,12 @@
             stopPlayback();
             clearSelection();
 
-            // The exact sample position where the cursor is currently placed
-            const sPos = Math.max(0, Math.min(currentSamples.length, Math.floor(playheadPosition * sampleRate)));
-            punchInStartSample = sPos;
+            // Snapshot the untouched original track
+            originalSamples = currentSamples.slice();
+            recordedChunkSamples = [];
 
-            // Keep all samples before the cursor, and overwrite from this point on
-            currentSamples = currentSamples.slice(0, punchInStartSample);
-            totalDuration = currentSamples.length / sampleRate;
-            playheadPosition = totalDuration;
+            // The exact sample position where the cursor is placed
+            punchInStartSample = Math.max(0, Math.min(originalSamples.length, Math.floor(playheadPosition * sampleRate)));
 
             try {
                 ensureAudioContext();
@@ -2014,10 +2025,17 @@
                     if (recordingState === 'recording') {
                         const inputData = e.inputBuffer.getChannelData(0);
                         for (let i = 0; i < inputData.length; i++) {
-                            currentSamples.push(inputData[i]);
+                            recordedChunkSamples.push(inputData[i]);
                         }
+
+                        // Real-time composite: [untouched_prefix] + [new_recording] + [untouched_remaining_suffix]
+                        const prefix = originalSamples.slice(0, punchInStartSample);
+                        const suffixStart = punchInStartSample + recordedChunkSamples.length;
+                        const suffix = originalSamples.slice(suffixStart);
+
+                        currentSamples = prefix.concat(recordedChunkSamples, suffix);
                         totalDuration = currentSamples.length / sampleRate;
-                        playheadPosition = totalDuration;
+                        playheadPosition = (punchInStartSample + recordedChunkSamples.length) / sampleRate;
 
                         let sum = 0;
                         for (let i = 0; i < inputData.length; i += 16) {
@@ -2039,7 +2057,7 @@
                 playbackAnimFrame = setInterval(() => {
                     if (recordingState === 'recording') {
                         drawWaveform();
-                        document.getElementById('timerDisplay').textContent = formatSec(totalDuration);
+                        document.getElementById('timerDisplay').textContent = formatSec(playheadPosition);
                     }
                 }, 80);
 
@@ -2062,17 +2080,39 @@
             if (scriptProcessor) scriptProcessor.disconnect();
             if (micSource) micSource.disconnect();
 
-            // 4ms micro-crossfade at punch-in seam
-            if (punchInStartSample > 0 && punchInStartSample < currentSamples.length) {
-                const xfadeLen = Math.min(Math.floor(0.004 * sampleRate), punchInStartSample, currentSamples.length - punchInStartSample);
+            const prefix = originalSamples.slice(0, punchInStartSample);
+            const newTake = recordedChunkSamples;
+            const suffixStart = punchInStartSample + newTake.length;
+            const suffix = originalSamples.slice(suffixStart);
+
+            // Micro-crossfade at punch-in start seam
+            if (prefix.length > 0 && newTake.length > 0) {
+                const xfadeLen = Math.min(Math.floor(0.004 * sampleRate), prefix.length, newTake.length);
                 for (let i = 0; i < xfadeLen; i++) {
                     const factor = i / xfadeLen;
-                    const bIdx = punchInStartSample - xfadeLen + i;
-                    if (bIdx >= 0 && (punchInStartSample + i) < currentSamples.length) {
-                        currentSamples[bIdx] = currentSamples[bIdx] * (1 - factor) + currentSamples[punchInStartSample + i] * factor;
+                    const pIdx = prefix.length - xfadeLen + i;
+                    if (pIdx >= 0 && i < newTake.length) {
+                        newTake[i] = prefix[pIdx] * (1 - factor) + newTake[i] * factor;
                     }
                 }
             }
+
+            // Micro-crossfade at punch-in end seam (if downstream audio remains)
+            if (suffix.length > 0 && newTake.length > 0) {
+                const xfadeLen = Math.min(Math.floor(0.004 * sampleRate), newTake.length, suffix.length);
+                for (let i = 0; i < xfadeLen; i++) {
+                    const factor = i / xfadeLen;
+                    const tIdx = newTake.length - xfadeLen + i;
+                    if (tIdx >= 0 && i < suffix.length) {
+                        suffix[i] = newTake[tIdx] * (1 - factor) + suffix[i] * factor;
+                    }
+                }
+            }
+
+            const finalSamples = prefix.concat(newTake, suffix);
+            currentSamples = finalSamples;
+            totalDuration = currentSamples.length / sampleRate;
+            playheadPosition = (punchInStartSample + newTake.length) / sampleRate;
 
             const wavBlob = encodeWAV(currentSamples, sampleRate);
             await saveSlideAudio(wavBlob);
