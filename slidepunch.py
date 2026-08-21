@@ -186,6 +186,9 @@ def create_project_from_pdf(project_name, pdf_bytes, title=None):
     if not safe_id:
         safe_id = "project_demo"
         
+    if not pdf_bytes or len(pdf_bytes) == 0:
+        raise ValueError("Le fichier PDF reçu est vide (0 octet).")
+
     proj_dir = PROJECTS_DIR / safe_id
     proj_dir.mkdir(parents=True, exist_ok=True)
     (proj_dir / "slide_images").mkdir(exist_ok=True)
