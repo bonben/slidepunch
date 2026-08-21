@@ -1214,8 +1214,8 @@
                         <span>📋</span> <span id="txtPaste">Paste (Ctrl+V)</span>
                     </button>
                     <div class="timer-display" id="timerDisplay">00:00</div>
-                    <button class="btn-delete-all" id="btnDeleteAll" onclick="deleteCurrentSlideAudio()" style="display:none;" title="Delete all audio for this slide">
-                        <span>🗑️</span> <span id="txtDeleteAll">Delete All</span>
+                    <button class="btn-delete-all" id="btnDeleteAll" onclick="deleteCurrentSlideAudio()" style="display:none;" title="Effacer l'audio de cette diapositive">
+                        <span>🗑️</span> <span id="txtDeleteAll">Effacer l'audio</span>
                     </button>
                 </div>
 
@@ -1234,7 +1234,7 @@
                         <span>✕</span> <span id="txtCancelSelection">Deselect (Esc)</span>
                     </button>
                     <div class="selection-badge" id="selectionTimeBadge">00:00.0 (0.0s)</div>
-                    <button class="btn-delete-all" onclick="deleteCurrentSlideAudio()" title="Delete all audio for this slide">
+                    <button class="btn-delete-all" onclick="deleteCurrentSlideAudio()" title="Effacer l'audio de cette diapositive">
                         <span>🗑️</span>
                     </button>
                 </div>
@@ -1336,8 +1336,9 @@
                 pasteBtn: "Paste (Ctrl+V)",
                 playSelection: "Play Selection",
                 cancelSelection: "Deselect (Esc)",
-                deleteAll: "Delete All",
-                confirmClearAudio: "Delete all audio for this slide?",
+                deleteAll: "Clear Audio",
+                confirmClearAudio: "Clear audio recording for this slide?",
+                deleteSlideTitle: "Clear audio for this slide",
                 toastCopied: "Audio Copied ✓",
                 toastCut: "Audio Cut to Clipboard ✓",
                 toastPasted: "Audio Pasted ✓",
@@ -1400,8 +1401,9 @@
                 pasteBtn: "Coller (Ctrl+V)",
                 playSelection: "Écouter",
                 cancelSelection: "Annuler (Échap)",
-                deleteAll: "Tout supprimer",
-                confirmClearAudio: "Supprimer tout l'audio de cette slide ?",
+                deleteAll: "Effacer l'audio",
+                confirmClearAudio: "Effacer l'enregistrement audio de cette diapositive ?",
+                deleteSlideTitle: "Effacer l'audio de cette diapositive",
                 toastCopied: "Audio copié ✓",
                 toastCut: "Audio coupé dans le presse-papier ✓",
                 toastPasted: "Audio collé ✓",
@@ -1473,9 +1475,9 @@
             document.getElementById('txtPlaySelection').textContent = t('playSelection');
             document.getElementById('txtCancelSelection').textContent = t('cancelSelection');
             document.getElementById('txtDeleteAll').textContent = t('deleteAll');
-            document.getElementById('txtPlaySelection').textContent = t('playSelection');
-            document.getElementById('txtCancelSelection').textContent = t('cancelSelection');
-            document.getElementById('txtDeleteAll').textContent = t('deleteAll');
+            
+            const btnDel = document.getElementById('btnDeleteAll');
+            if (btnDel) btnDel.title = t('deleteSlideTitle');
 
             document.getElementById('txtLandingTitle').textContent = t('landingTitle');
             document.getElementById('txtLandingSub').textContent = t('landingSub');
