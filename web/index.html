@@ -808,6 +808,21 @@
             box-shadow: 0 3px 12px rgba(234, 88, 12, 0.4);
         }
 
+        .btn-copy-selection {
+            background: #0284C7;
+            color: white;
+            padding: 8px 14px;
+            font-size: 0.8rem;
+        }
+
+        .btn-paste {
+            background: linear-gradient(135deg, #0284C7, #0369A1);
+            color: white;
+            padding: 8px 16px;
+            font-size: 0.82rem;
+            box-shadow: 0 2px 8px rgba(2, 132, 199, 0.35);
+        }
+
         .btn-play-selection {
             background: #0284C7;
             color: white;
@@ -1195,6 +1210,9 @@
                     <button class="btn-ctl btn-rec-toggle" id="btnToggleRec" onclick="toggleRecording()">
                         <span id="recIcon">●</span> <span id="txtRecToggle">Record (Space)</span>
                     </button>
+                    <button class="btn-ctl btn-paste" id="btnPaste" onclick="pasteAudioClipboard()" style="display:none;" title="Coller l'audio copié/coupé au curseur (Ctrl+V)">
+                        <span>📋</span> <span id="txtPaste">Paste (Ctrl+V)</span>
+                    </button>
                     <div class="timer-display" id="timerDisplay">00:00</div>
                     <button class="btn-delete-all" id="btnDeleteAll" onclick="deleteCurrentSlideAudio()" style="display:none;" title="Delete all audio for this slide">
                         <span>🗑️</span> <span id="txtDeleteAll">Delete All</span>
@@ -1203,8 +1221,11 @@
 
                 <!-- 2. EDIT MODE CONTROLS (Triggered on Waveform Drag Selection) -->
                 <div id="editControls" style="display:none; align-items:center; gap:10px;">
-                    <button class="btn-ctl btn-cut-selection" id="btnCutSelection" onclick="cutSelectedRange()">
+                    <button class="btn-ctl btn-cut-selection" id="btnCutSelection" onclick="cutSelectedRange()" title="Couper la sélection (Ctrl+X)">
                         <span>✂️</span> <span id="txtCutSelection">Cut Selection</span>
+                    </button>
+                    <button class="btn-ctl btn-copy-selection" id="btnCopySelection" onclick="copySelectedRange()" title="Copier la sélection (Ctrl+C)">
+                        <span>📋</span> <span id="txtCopySelection">Copy (Ctrl+C)</span>
                     </button>
                     <button class="btn-ctl btn-play-selection" id="btnPlaySelection" onclick="playSelectedRange()">
                         <span>▶</span> <span id="txtPlaySelection">Play</span>
@@ -1310,11 +1331,16 @@
                 recordFromStart: "Record from start (Space)",
                 recordAppend: "Continue recording (Space)",
                 recordFrom: "Record from",
-                cutSelection: "Cut Selection",
+                cutSelection: "Cut (Ctrl+X)",
+                copySelection: "Copy (Ctrl+C)",
+                pasteBtn: "Paste (Ctrl+V)",
                 playSelection: "Play Selection",
                 cancelSelection: "Deselect (Esc)",
                 deleteAll: "Delete All",
                 confirmClearAudio: "Delete all audio for this slide?",
+                toastCopied: "Audio Copied ✓",
+                toastCut: "Audio Cut to Clipboard ✓",
+                toastPasted: "Audio Pasted ✓",
                 prevBtn: "◀ Previous (←)",
                 nextBtn: "Next (→) ▶",
                 landingTitle: "🥊 SlidePunch Presentation Studio",
@@ -1369,11 +1395,16 @@
                 recordFromStart: "Enregistrer depuis le début (Espace)",
                 recordAppend: "Continuer l'enregistrement (Espace)",
                 recordFrom: "Enregistrer depuis",
-                cutSelection: "Couper la sélection",
+                cutSelection: "Couper (Ctrl+X)",
+                copySelection: "Copier (Ctrl+C)",
+                pasteBtn: "Coller (Ctrl+V)",
                 playSelection: "Écouter",
                 cancelSelection: "Annuler (Échap)",
                 deleteAll: "Tout supprimer",
                 confirmClearAudio: "Supprimer tout l'audio de cette slide ?",
+                toastCopied: "Audio copié ✓",
+                toastCut: "Audio coupé dans le presse-papier ✓",
+                toastPasted: "Audio collé ✓",
                 prevBtn: "◀ Précédente (←)",
                 nextBtn: "Suivante (→) ▶",
                 landingTitle: "🥊 Studio de Présentation SlidePunch",
@@ -1437,6 +1468,11 @@
             document.getElementById('txtMicLevel').textContent = t('micLevel');
 
             document.getElementById('txtCutSelection').textContent = t('cutSelection');
+            document.getElementById('txtCopySelection').textContent = t('copySelection');
+            document.getElementById('txtPaste').textContent = t('pasteBtn');
+            document.getElementById('txtPlaySelection').textContent = t('playSelection');
+            document.getElementById('txtCancelSelection').textContent = t('cancelSelection');
+            document.getElementById('txtDeleteAll').textContent = t('deleteAll');
             document.getElementById('txtPlaySelection').textContent = t('playSelection');
             document.getElementById('txtCancelSelection').textContent = t('cancelSelection');
             document.getElementById('txtDeleteAll').textContent = t('deleteAll');
@@ -2298,8 +2334,24 @@
         }
 
         // ==========================================
-        // EDIT MODE: CUT SELECTION
+        // EDIT MODE: CUT, COPY & PASTE AUDIO CLIPBOARD
         // ==========================================
+
+        let audioClipboard = null;
+
+        function copySelectedRange() {
+            if (selectionStart === null || selectionEnd === null || selectionEnd <= selectionStart) return;
+            if (currentSamples.length === 0) return;
+
+            const sStart = Math.max(0, Math.floor(selectionStart * sampleRate));
+            const sEnd = Math.min(currentSamples.length, Math.floor(selectionEnd * sampleRate));
+            if (sEnd <= sStart) return;
+
+            audioClipboard = currentSamples.slice(sStart, sEnd);
+            const dur = (sEnd - sStart) / sampleRate;
+            showSavedToast(`${t('toastCopied')} (${formatSecExact(dur)})`);
+            updateControlUI();
+        }
 
         async function cutSelectedRange() {
             if (selectionStart === null || selectionEnd === null || selectionEnd <= selectionStart) return;
@@ -2310,6 +2362,9 @@
             const sEnd = Math.min(currentSamples.length, Math.floor(selectionEnd * sampleRate));
 
             if (sEnd <= sStart) return;
+
+            // Copy cut portion to clipboard for pasting elsewhere!
+            audioClipboard = currentSamples.slice(sStart, sEnd);
 
             const before = currentSamples.slice(0, sStart);
             const after = currentSamples.slice(sEnd);
@@ -2337,6 +2392,56 @@
             } else {
                 await deleteCurrentSlideAudio(true);
             }
+
+            const cutDur = audioClipboard.length / sampleRate;
+            showSavedToast(`${t('toastCut')} (${formatSecExact(cutDur)})`);
+            updateControlUI();
+        }
+
+        async function pasteAudioClipboard() {
+            if (!audioClipboard || audioClipboard.length === 0) return;
+            stopPlayback();
+            clearSelection();
+
+            const sPos = Math.max(0, Math.min(currentSamples.length, Math.floor(playheadPosition * sampleRate)));
+            const before = currentSamples.slice(0, sPos);
+            const inserted = audioClipboard.slice();
+            const after = currentSamples.slice(sPos);
+
+            // Micro-crossfade start seam (before -> inserted)
+            if (before.length > 0 && inserted.length > 0) {
+                const xfadeLen = Math.min(Math.floor(0.004 * sampleRate), before.length, inserted.length);
+                for (let i = 0; i < xfadeLen; i++) {
+                    const factor = i / xfadeLen;
+                    const bIdx = before.length - xfadeLen + i;
+                    if (bIdx >= 0 && i < inserted.length) {
+                        inserted[i] = before[bIdx] * (1 - factor) + inserted[i] * factor;
+                    }
+                }
+            }
+
+            // Micro-crossfade end seam (inserted -> after)
+            if (after.length > 0 && inserted.length > 0) {
+                const xfadeLen = Math.min(Math.floor(0.004 * sampleRate), inserted.length, after.length);
+                for (let i = 0; i < xfadeLen; i++) {
+                    const factor = i / xfadeLen;
+                    const tIdx = inserted.length - xfadeLen + i;
+                    if (tIdx >= 0 && i < after.length) {
+                        after[i] = inserted[tIdx] * (1 - factor) + after[i] * factor;
+                    }
+                }
+            }
+
+            currentSamples = before.concat(inserted, after);
+            totalDuration = currentSamples.length / sampleRate;
+            playheadPosition = (sPos + inserted.length) / sampleRate;
+
+            const wavBlob = encodeWAV(currentSamples, sampleRate);
+            await saveSlideAudio(wavBlob, true);
+
+            const pasteDur = inserted.length / sampleRate;
+            showSavedToast(`${t('toastPasted')} (${formatSecExact(pasteDur)})`);
+            updateControlUI();
         }
 
         function playSelectedRange() {
@@ -2475,6 +2580,7 @@
             const txtRec = document.getElementById('txtRecToggle');
             const timer = document.getElementById('timerDisplay');
             const btnDeleteAll = document.getElementById('btnDeleteAll');
+            const btnPaste = document.getElementById('btnPaste');
 
             // Check if Range Selection is active -> Switch to Edit Mode
             const isEditing = selectionStart !== null && selectionEnd !== null && selectionEnd > selectionStart;
@@ -2489,6 +2595,11 @@
             } else {
                 captureDiv.style.display = 'flex';
                 editDiv.style.display = 'none';
+
+                // Paste button visibility
+                if (btnPaste) {
+                    btnPaste.style.display = (audioClipboard && audioClipboard.length > 0 && recordingState === 'idle') ? 'flex' : 'none';
+                }
 
                 if (recordingState === 'recording') {
                     btnRec.className = 'btn-ctl btn-rec-toggle recording';
@@ -2999,7 +3110,24 @@
                 return;
             }
 
-            if (e.code === 'Space') {
+            const isCmdOrCtrl = e.ctrlKey || e.metaKey;
+
+            if (isCmdOrCtrl && e.code === 'KeyC') {
+                if (selectionStart !== null && selectionEnd !== null && selectionEnd > selectionStart) {
+                    e.preventDefault();
+                    copySelectedRange();
+                }
+            } else if (isCmdOrCtrl && e.code === 'KeyX') {
+                if (selectionStart !== null && selectionEnd !== null && selectionEnd > selectionStart) {
+                    e.preventDefault();
+                    cutSelectedRange();
+                }
+            } else if (isCmdOrCtrl && e.code === 'KeyV') {
+                if (audioClipboard && audioClipboard.length > 0 && recordingState === 'idle') {
+                    e.preventDefault();
+                    pasteAudioClipboard();
+                }
+            } else if (e.code === 'Space') {
                 e.preventDefault();
                 toggleRecording();
             } else if (e.code === 'KeyP') {
