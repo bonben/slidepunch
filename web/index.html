@@ -1751,7 +1751,8 @@
             updateControlUI();
         }
 
-        async function fetchSlideAudioWav() {
+        async function fetchSlideAudioWav(preservePlayhead = false) {
+            const savedPlayhead = playheadPosition;
             const slide = slides[currentIndex];
             if (slide && slide.hasAudio) {
                 try {
@@ -1769,7 +1770,11 @@
                         sampleRate = decoded.sampleRate;
                         currentSamples = Array.from(decoded.getChannelData(0));
                         totalDuration = currentSamples.length / sampleRate;
-                        playheadPosition = 0.0;
+                        if (preservePlayhead) {
+                            playheadPosition = Math.max(0, Math.min(totalDuration, savedPlayhead));
+                        } else {
+                            playheadPosition = 0.0;
+                        }
                     }
                 } catch (err) {
                     console.warn("Audio load error:", err);
@@ -2115,10 +2120,10 @@
             playheadPosition = (punchInStartSample + newTake.length) / sampleRate;
 
             const wavBlob = encodeWAV(currentSamples, sampleRate);
-            await saveSlideAudio(wavBlob);
+            await saveSlideAudio(wavBlob, true);
         }
 
-        async function saveSlideAudio(blob) {
+        async function saveSlideAudio(blob, preservePlayhead = true) {
             const slide = slides[currentIndex];
             const dur = currentSamples.length / sampleRate;
 
@@ -2135,7 +2140,7 @@
                         slide.audioUrl = data.audioUrl;
                         recordingState = 'idle';
                         showSavedToast();
-                        await fetchSlideAudioWav();
+                        await fetchSlideAudioWav(preservePlayhead);
                         renderSidebar();
                         updateGlobalStats();
                         updateControlUI();
@@ -2166,7 +2171,7 @@
                 recordingState = 'idle';
 
                 showSavedToast();
-                await fetchSlideAudioWav();
+                await fetchSlideAudioWav(preservePlayhead);
                 renderSidebar();
                 updateGlobalStats();
                 updateControlUI();
@@ -2190,6 +2195,7 @@
             if (selectionStart === null || selectionEnd === null || selectionEnd <= selectionStart) return;
             if (currentSamples.length === 0) return;
 
+            const cutPoint = selectionStart;
             const sStart = Math.max(0, Math.floor(selectionStart * sampleRate));
             const sEnd = Math.min(currentSamples.length, Math.floor(selectionEnd * sampleRate));
 
@@ -2210,14 +2216,14 @@
 
             currentSamples = before.concat(after.slice(xfadeLen));
             totalDuration = currentSamples.length / sampleRate;
-            playheadPosition = Math.min(totalDuration, selectionStart);
+            playheadPosition = Math.max(0, Math.min(totalDuration, cutPoint));
 
             clearSelection();
 
-            // Auto-save immediately!
+            // Auto-save immediately with playhead staying exactly at the cut point!
             if (currentSamples.length > 0) {
                 const wavBlob = encodeWAV(currentSamples, sampleRate);
-                await saveSlideAudio(wavBlob);
+                await saveSlideAudio(wavBlob, true);
             } else {
                 await deleteCurrentSlideAudio(true);
             }
