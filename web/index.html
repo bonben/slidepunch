@@ -1260,7 +1260,9 @@
                 micLevel: "Mic Level",
                 recordStart: "Record (Space)",
                 recordStop: "Stop & Save (Space)",
-                reRecord: "Re-record (Space)",
+                recordFromStart: "Record from start (Space)",
+                recordAppend: "Continue recording (Space)",
+                recordFrom: "Record from",
                 cutSelection: "Cut Selection",
                 playSelection: "Play Selection",
                 cancelSelection: "Deselect (Esc)",
@@ -1272,8 +1274,8 @@
                 landingSub: "Record your presentation slide-by-slide with real-time waveform, instant audio editing, and 1-click video export.",
                 dropzoneTitle: "Drop your Presentation PDF here",
                 dropzoneSub: "or click to browse from your computer (LaTeX Beamer, PowerPoint, Typst, Keynote)",
-                feat1Title: "🔴 1-Click Record & Cut",
-                feat1Sub: "Hit record and stop. Drag on the waveform to select and cut out any stumble instantly.",
+                feat1Title: "🔴 Live Punch-In Overdub",
+                feat1Sub: "Place the cursor anywhere on the waveform and hit Record to overwrite or append seamlessly.",
                 feat2Title: "✏️ Live Prompter",
                 feat2Sub: "Synchronized editable speaker script next to your slide, auto-saved in Markdown.",
                 feat3Title: "🎬 1-Click Video",
@@ -1315,7 +1317,9 @@
                 micLevel: "Niveau Micro",
                 recordStart: "Enregistrer (Espace)",
                 recordStop: "Arrêter & Sauver (Espace)",
-                reRecord: "Réenregistrer (Espace)",
+                recordFromStart: "Enregistrer depuis le début (Espace)",
+                recordAppend: "Continuer l'enregistrement (Espace)",
+                recordFrom: "Enregistrer depuis",
                 cutSelection: "Couper la sélection",
                 playSelection: "Écouter",
                 cancelSelection: "Annuler (Échap)",
@@ -1327,8 +1331,8 @@
                 landingSub: "Enregistrez vos présentations slide-par-slide avec spectrogramme temps réel, édition intuitive et export vidéo 1-clic.",
                 dropzoneTitle: "Déposez votre présentation PDF ici",
                 dropzoneSub: "ou cliquez pour choisir un fichier (LaTeX Beamer, PowerPoint, Typst, Keynote)",
-                feat1Title: "🔴 1-Clic Record & Cut",
-                feat1Sub: "Enregistrez et coupez en glissant sur la forme d'onde sans logiciel de montage lourd.",
+                feat1Title: "🔴 Punch-In Direct",
+                feat1Sub: "Placez le curseur n'importe où sur la forme d'onde et réenregistrez pour écraser ou prolonger.",
                 feat2Title: "✏️ Prompteur Direct",
                 feat2Sub: "Script de parole synchronisé à côté de vos slides, sauvegardé en Markdown.",
                 feat3Title: "🎬 Vidéo en 1 Clic",
@@ -1969,6 +1973,8 @@
         // 1-BUTTON RECORDING TOGGLE & IMMEDIATE AUTO-SAVE
         // ==========================================
 
+        let punchInStartSample = 0;
+
         async function toggleRecording() {
             if (recordingState === 'idle') {
                 await startRecording();
@@ -1981,16 +1987,14 @@
             stopPlayback();
             clearSelection();
 
-            // If we have existing audio and playhead is placed inside it, record from playhead (or fresh if 0:00)
-            if (playheadPosition > 0.05 && playheadPosition < totalDuration) {
-                const keepSamples = Math.floor(playheadPosition * sampleRate);
-                currentSamples = currentSamples.slice(0, keepSamples);
-                totalDuration = currentSamples.length / sampleRate;
-            } else if (playheadPosition >= totalDuration - 0.05 || playheadPosition <= 0.05) {
-                currentSamples = [];
-                totalDuration = 0.0;
-                playheadPosition = 0.0;
-            }
+            // The exact sample position where the cursor is currently placed
+            const sPos = Math.max(0, Math.min(currentSamples.length, Math.floor(playheadPosition * sampleRate)));
+            punchInStartSample = sPos;
+
+            // Keep all samples before the cursor, and overwrite from this point on
+            currentSamples = currentSamples.slice(0, punchInStartSample);
+            totalDuration = currentSamples.length / sampleRate;
+            playheadPosition = totalDuration;
 
             try {
                 ensureAudioContext();
@@ -2051,6 +2055,18 @@
             }
             if (scriptProcessor) scriptProcessor.disconnect();
             if (micSource) micSource.disconnect();
+
+            // 4ms micro-crossfade at punch-in seam
+            if (punchInStartSample > 0 && punchInStartSample < currentSamples.length) {
+                const xfadeLen = Math.min(Math.floor(0.004 * sampleRate), punchInStartSample, currentSamples.length - punchInStartSample);
+                for (let i = 0; i < xfadeLen; i++) {
+                    const factor = i / xfadeLen;
+                    const bIdx = punchInStartSample - xfadeLen + i;
+                    if (bIdx >= 0 && (punchInStartSample + i) < currentSamples.length) {
+                        currentSamples[bIdx] = currentSamples[bIdx] * (1 - factor) + currentSamples[punchInStartSample + i] * factor;
+                    }
+                }
+            }
 
             const wavBlob = encodeWAV(currentSamples, sampleRate);
             await saveSlideAudio(wavBlob);
@@ -2324,7 +2340,13 @@
                     recIcon.textContent = '●';
 
                     if (currentSamples.length > 0) {
-                        txtRec.textContent = t('reRecord');
+                        if (playheadPosition <= 0.05) {
+                            txtRec.textContent = t('recordFromStart');
+                        } else if (playheadPosition >= totalDuration - 0.05) {
+                            txtRec.textContent = t('recordAppend');
+                        } else {
+                            txtRec.textContent = `${t('recordFrom')} ${formatSecExact(playheadPosition)} (Espace)`;
+                        }
                         timer.textContent = formatSec(totalDuration);
                         timer.style.color = '#15803D';
                         btnDeleteAll.style.display = 'flex';
