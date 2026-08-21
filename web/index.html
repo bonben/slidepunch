@@ -85,6 +85,8 @@
             padding: 2px 8px;
             border-radius: 999px;
             font-weight: 600;
+        }
+
         /* Project Selector in Header */
         .project-selector-wrap {
             display: flex;
@@ -1808,7 +1810,61 @@
             }
         };
 
+        // ==========================================
+        // APPLICATION STATE
+        // ==========================================
         let currentLang = localStorage.getItem('slidepunch_lang') || 'fr';
+        let isServerMode = false;
+        let db = null;
+        let currentProjectId = null;
+        let projects = [];
+        let slides = [];
+        let currentIndex = 0;
+        
+        let recordingState = 'idle';
+        let audioContext = null;
+        let microphoneStream = null;
+        let scriptProcessor = null;
+        let micSource = null;
+        let isPlaying = false;
+        let playbackSource = null;
+        let playbackStartTime = 0;
+        let playbackStartOffset = 0;
+        let playbackAnimFrame = null;
+
+        let currentSamples = [];
+        let sampleRate = 48000;
+        let playheadPosition = 0.0;
+        let totalDuration = 0.0;
+
+        let selectionStart = null;
+        let selectionEnd = null;
+        let isDraggingWaveform = false;
+        let dragStartX = 0;
+        let hasMovedDrag = false;
+
+        let currentFontSize = 1.15;
+        let saveTimeout = null;
+        let selectedPdfBytes = null;
+        let audioClipboard = null;
+
+        let selectedAudioDeviceId = localStorage.getItem('slidepunch_selected_mic') || '';
+        let selectedCameraDeviceId = localStorage.getItem('slidepunch_selected_camera') || '';
+        let selfieSegmentation = null;
+        let webcamStream = null;
+        let webcamActive = false;
+        let isWebcamProcessing = false;
+        let webcamMediaRecorder = null;
+        let webcamRecordedChunks = [];
+
+        let webcamState = {
+            xPct: 0.70,
+            yPct: 0.65,
+            sizePct: 0.28,
+            shape: 'cutout',
+            bgMode: 'cutout',
+            mirrored: true
+        };
 
         function t(key) {
             return i18n[currentLang][key] || key;
@@ -1909,8 +1965,6 @@
         // ==========================================
         // HYBRID STORAGE ENGINE (IndexedDB / Server)
         // ==========================================
-        let isServerMode = false;
-        let db = null;
 
         function openIndexedDB() {
             return new Promise((resolve, reject) => {
@@ -1949,45 +2003,8 @@
             updateModeBadge();
         }
 
-        // ==========================================
-        // APPLICATION STATE
-        // ==========================================
-        let currentProjectId = null;
-        let projects = [];
-        let slides = [];
-        let currentIndex = 0;
-        
-        // Recording state: 'idle' | 'recording' | 'saving'
-        let recordingState = 'idle';
-        let audioContext = null;
-        let microphoneStream = null;
-        let scriptProcessor = null;
-        let micSource = null;
-        let isPlaying = false;
-        let playbackSource = null;
-        let playbackStartTime = 0;
-        let playbackStartOffset = 0;
-        let playbackAnimFrame = null;
-
-        // Raw Audio Samples in Float32 Array
-        let currentSamples = [];
-        let sampleRate = 48000;
-        let playheadPosition = 0.0;
-        let totalDuration = 0.0;
-
-        // Range Selection / Edit Mode
-        let selectionStart = null;
-        let selectionEnd = null;
-        let isDraggingWaveform = false;
-        let dragStartX = 0;
-        let hasMovedDrag = false;
-
         const canvas = document.getElementById('waveformCanvas');
         const canvasCtx = canvas.getContext('2d');
-
-        let currentFontSize = 1.15;
-        let saveTimeout = null;
-        let selectedPdfBytes = null;
 
         async function init() {
             window.addEventListener('resize', resizeCanvas);
@@ -2520,24 +2537,6 @@
         // WEBCAM & REAL-TIME AI MATTING ENGINE (MEDIAPIPE)
         // ==========================================
 
-        let selfieSegmentation = null;
-        let webcamStream = null;
-        let webcamActive = false;
-        let isWebcamProcessing = false;
-        let selectedCameraDeviceId = localStorage.getItem('slidepunch_selected_camera') || '';
-        
-        let webcamMediaRecorder = null;
-        let webcamRecordedChunks = [];
-
-        let webcamState = {
-            xPct: 0.70,
-            yPct: 0.65,
-            sizePct: 0.28,
-            shape: 'cutout', // 'cutout' | 'circle' | 'rect'
-            bgMode: 'cutout', // 'cutout' | 'blur' | 'original'
-            mirrored: true
-        };
-
         const segmentBufferCanvas = document.createElement('canvas');
         const segmentBufferCtx = segmentBufferCanvas.getContext('2d', { willReadFrequently: true });
 
@@ -2948,8 +2947,6 @@
         // MICROPHONE SOURCE SELECTION & ENUMERATION
         // ==========================================
 
-        let selectedAudioDeviceId = localStorage.getItem('slidepunch_selected_mic') || '';
-
         async function populateMicrophoneList() {
             if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
             try {
@@ -3229,12 +3226,6 @@
                 slide.hasAudio = true;
                 slide.audioDuration = dur;
                 slide.audioBlob = blob;
-                    updatedAt: new Date().toISOString()
-                });
-
-                slide.hasAudio = true;
-                slide.audioDuration = dur;
-                slide.audioBlob = blob;
                 recordingState = 'idle';
 
                 showSavedToast();
@@ -3257,8 +3248,6 @@
         // ==========================================
         // EDIT MODE: CUT, COPY & PASTE AUDIO CLIPBOARD
         // ==========================================
-
-        let audioClipboard = null;
 
         function copySelectedRange() {
             if (selectionStart === null || selectionEnd === null || selectionEnd <= selectionStart) return;

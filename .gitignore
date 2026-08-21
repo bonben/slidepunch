@@ -5,3 +5,6 @@ temp_*.wav
 temp_*.webm
 temp_*.dat
 *.mp4
+demo_*.pdf
+*.pdf
+!projects/*/slides.pdf

@@ -242,16 +242,55 @@ def render_project_video(project_id):
         if not wav.exists():
             return False, f"Audio manquant pour la Slide {num}. Veuillez l'enregistrer d'abord."
         
-        cmd = [
-            "ffmpeg", "-y",
-            "-loop", "1", "-framerate", "30", "-i", str(img),
-            "-i", str(wav),
-            "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:white,format=yuv420p",
-            "-c:v", "libx264", "-tune", "stillimage", "-preset", "fast",
-            "-c:a", "aac", "-b:a", "192k",
-            "-shortest",
-            str(seg_mp4)
-        ]
+        cam_webm = proj_dir / "recordings" / f"slide_{num:02d}_cam.webm"
+        layout_json = proj_dir / "recordings" / f"slide_{num:02d}_layout.json"
+        
+        if cam_webm.exists() and layout_json.exists():
+            try:
+                layout = json.loads(layout_json.read_text(encoding="utf-8"))
+                w_px = max(100, int(layout.get("sizePct", 0.28) * 1920))
+                x_px = max(0, min(1920 - w_px, int(layout.get("xPct", 0.70) * 1920)))
+                y_px = max(0, min(1080 - w_px, int(layout.get("yPct", 0.70) * 1080)))
+                
+                cmd = [
+                    "ffmpeg", "-y",
+                    "-loop", "1", "-framerate", "30", "-i", str(img),
+                    "-i", str(cam_webm),
+                    "-i", str(wav),
+                    "-filter_complex",
+                    f"[0:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:white[base];"
+                    f"[1:v]scale={w_px}:{w_px}:force_original_aspect_ratio=increase,crop={w_px}:{w_px}[cam];"
+                    f"[base][cam]overlay={x_px}:{y_px}:shortest=1[outv]",
+                    "-map", "[outv]",
+                    "-map", "2:a",
+                    "-c:v", "libx264", "-preset", "fast",
+                    "-c:a", "aac", "-b:a", "192k",
+                    "-shortest",
+                    str(seg_mp4)
+                ]
+            except Exception:
+                cmd = [
+                    "ffmpeg", "-y",
+                    "-loop", "1", "-framerate", "30", "-i", str(img),
+                    "-i", str(wav),
+                    "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:white,format=yuv420p",
+                    "-c:v", "libx264", "-tune", "stillimage", "-preset", "fast",
+                    "-c:a", "aac", "-b:a", "192k",
+                    "-shortest",
+                    str(seg_mp4)
+                ]
+        else:
+            cmd = [
+                "ffmpeg", "-y",
+                "-loop", "1", "-framerate", "30", "-i", str(img),
+                "-i", str(wav),
+                "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:white,format=yuv420p",
+                "-c:v", "libx264", "-tune", "stillimage", "-preset", "fast",
+                "-c:a", "aac", "-b:a", "192k",
+                "-shortest",
+                str(seg_mp4)
+            ]
+
         res = subprocess.run(cmd, capture_output=True)
         if res.returncode != 0:
             return False, f"Erreur ffmpeg segment {num}: {res.stderr.decode('utf-8')}"
@@ -399,8 +438,49 @@ class SlidePunchHandler(SimpleHTTPRequestHandler):
             proj_id = params.get("project", [""])[0]
             slide_idx = int(params.get("slide", [1])[0])
             wav_file = PROJECTS_DIR / proj_id / "recordings" / f"slide_{slide_idx:02d}.wav"
+            cam_file = PROJECTS_DIR / proj_id / "recordings" / f"slide_{slide_idx:02d}_cam.webm"
+            layout_file = PROJECTS_DIR / proj_id / "recordings" / f"slide_{slide_idx:02d}_layout.json"
             if wav_file.exists():
                 wav_file.unlink()
+            if cam_file.exists():
+                cam_file.unlink()
+            if layout_file.exists():
+                layout_file.unlink()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"success": True}).encode("utf-8"))
+            return
+
+        elif path == "/api/save_slide_video":
+            post_data = self.rfile.read(content_length)
+            proj_id = params.get("project", [""])[0]
+            slide_idx = int(params.get("slide", [1])[0])
+            x_pct = float(params.get("x", [0.70])[0])
+            y_pct = float(params.get("y", [0.70])[0])
+            w_pct = float(params.get("w", [0.28])[0])
+            shape = params.get("shape", ["cutout"])[0]
+            bg_mode = params.get("bgMode", ["cutout"])[0]
+            
+            proj_dir = PROJECTS_DIR / proj_id
+            rec_dir = proj_dir / "recordings"
+            rec_dir.mkdir(parents=True, exist_ok=True)
+            
+            target_webm = rec_dir / f"slide_{slide_idx:02d}_cam.webm"
+            target_layout = rec_dir / f"slide_{slide_idx:02d}_layout.json"
+            
+            with open(target_webm, "wb") as f:
+                f.write(post_data)
+                
+            layout_data = {
+                "xPct": x_pct,
+                "yPct": y_pct,
+                "sizePct": w_pct,
+                "shape": shape,
+                "bgMode": bg_mode
+            }
+            target_layout.write_text(json.dumps(layout_data, indent=2), encoding="utf-8")
+            
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
