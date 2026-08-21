@@ -1225,6 +1225,12 @@
         <div class="modal-card">
             <div class="modal-title" id="modalTitle">Processing...</div>
             <div id="modalSpinner" class="spinner"></div>
+            
+            <!-- Dynamic Progress Bar -->
+            <div id="modalProgressWrapper" style="display:none; width:100%; background:#E2E8F0; border-radius:8px; height:12px; overflow:hidden; margin:16px 0;">
+                <div id="modalProgressBar" style="width:0%; height:100%; background:linear-gradient(to right, #06B6D4, #0284C7); transition:width 0.15s ease-out;"></div>
+            </div>
+            
             <div class="modal-body" id="modalMsg" style="text-align:center;">Please wait...</div>
             <button class="btn-export" id="modalCloseBtn" style="display:none; margin: 0 auto;" onclick="closeModal()">Close</button>
         </div>
@@ -2533,79 +2539,70 @@
             const titleEl = document.getElementById('modalTitle');
             const msg = document.getElementById('modalMsg');
             const spinner = document.getElementById('modalSpinner');
+            const progressWrap = document.getElementById('modalProgressWrapper');
+            const progressBar = document.getElementById('modalProgressBar');
             const closeBtn = document.getElementById('modalCloseBtn');
 
             modal.classList.add('active');
             titleEl.textContent = t('modalImportingTitle');
-            spinner.style.display = 'block';
+            spinner.style.display = 'none';
+            progressWrap.style.display = 'block';
+            progressBar.style.width = '0%';
             closeBtn.style.display = 'none';
-            msg.textContent = t('modalImportingMsg');
+            msg.innerHTML = `<strong>${t('modalImportingMsg')}</strong>`;
 
             const safeName = title.toLowerCase().replace(/[^a-z0-9]/g, '_');
 
-            if (isServerMode) {
-                try {
+            try {
+                // PDF.js extraction with live progress counter & progress bar
+                const loadingTask = pdfjsLib.getDocument({ data: pdfBytes });
+                const pdfDoc = await loadingTask.promise;
+                const numPages = pdfDoc.numPages;
+
+                const extractedSlides = [];
+                for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+                    const pct = Math.round((pageNum / numPages) * 100);
+                    progressBar.style.width = `${pct}%`;
+                    msg.innerHTML = `<span style="font-size:1.15rem; font-weight:800; color:var(--brand-navy);">Diapositive ${pageNum} / ${numPages} (${pct}%)</span><br><span style="color:var(--text-muted); font-size:0.85rem;">Extraction haute résolution 1080p...</span>`;
+
+                    const page = await pdfDoc.getPage(pageNum);
+                    const viewport = page.getViewport({ scale: 2.0 });
+                    
+                    const renderCanvas = document.createElement('canvas');
+                    renderCanvas.width = viewport.width;
+                    renderCanvas.height = viewport.height;
+                    const renderCtx = renderCanvas.getContext('2d');
+                    
+                    await page.render({ canvasContext: renderCtx, viewport: viewport }).promise;
+                    const imgDataUrl = renderCanvas.toDataURL('image/png');
+                    
+                    const textContent = await page.getTextContent();
+                    const pageText = textContent.items.map(item => item.str).join(' ');
+                    const firstLine = pageText.split('.')[0].slice(0, 50) || `Slide ${pageNum}`;
+
+                    extractedSlides.push({
+                        number: pageNum,
+                        topic: firstLine,
+                        targetTime: '1:00',
+                        script: pageText.trim(),
+                        image: imgDataUrl
+                    });
+                }
+
+                if (isServerMode) {
+                    msg.innerHTML = `<span style="font-size:1rem; font-weight:700; color:var(--brand-navy);">Finalisation du projet...</span>`;
                     const res = await fetch(`/api/projects/new?name=${safeName}&title=${encodeURIComponent(title)}`, {
                         method: 'POST',
                         body: pdfBytes
                     });
                     const data = await res.json();
-                    if (data.success) {
-                        currentProjectId = data.projectId;
-                        await loadProjectsList();
-                        await loadProject(currentProjectId);
-                        closeModal();
-                    } else {
-                        spinner.style.display = 'none';
-                        closeBtn.style.display = 'block';
-                        titleEl.textContent = t('modalErrorTitle');
-                        msg.textContent = data.error || "Cannot import PDF.";
-                    }
-                } catch (err) {
-                    spinner.style.display = 'none';
-                    closeBtn.style.display = 'block';
-                    titleEl.textContent = t('modalErrorTitle');
-                    msg.textContent = err.message;
-                }
-            } else {
-                try {
-                    const loadingTask = pdfjsLib.getDocument({ data: pdfBytes });
-                    const pdfDoc = await loadingTask.promise;
-                    const numPages = pdfDoc.numPages;
-                    
-                    const extractedSlides = [];
-                    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-                        msg.textContent = `${t('modalImportingMsg')} (${pageNum} / ${numPages})`;
-                        const page = await pdfDoc.getPage(pageNum);
-                        const viewport = page.getViewport({ scale: 2.0 });
-                        
-                        const renderCanvas = document.createElement('canvas');
-                        renderCanvas.width = viewport.width;
-                        renderCanvas.height = viewport.height;
-                        const renderCtx = renderCanvas.getContext('2d');
-                        
-                        await page.render({ canvasContext: renderCtx, viewport: viewport }).promise;
-                        const imgDataUrl = renderCanvas.toDataURL('image/png');
-                        
-                        const textContent = await page.getTextContent();
-                        const pageText = textContent.items.map(item => item.str).join(' ');
-                        const firstLine = pageText.split('.')[0].slice(0, 50) || `Slide ${pageNum}`;
-
-                        extractedSlides.push({
-                            number: pageNum,
-                            topic: firstLine,
-                            targetTime: '1:00',
-                            script: pageText.trim(),
-                            image: imgDataUrl
-                        });
-                    }
-
+                    if (!data.success) throw new Error(data.error || "Server error");
+                } else {
                     const newProj = {
                         id: safeName,
                         title: title,
                         slideCount: numPages
                     };
-
                     const tx = db.transaction(['projects', 'slides'], 'readwrite');
                     tx.objectStore('projects').put(newProj);
                     extractedSlides.forEach(s => {
@@ -2615,18 +2612,19 @@
                             ...s
                         });
                     });
-
-                    currentProjectId = safeName;
-                    await loadProjectsList();
-                    await loadProject(currentProjectId);
-                    closeModal();
-
-                } catch (err) {
-                    spinner.style.display = 'none';
-                    closeBtn.style.display = 'block';
-                    titleEl.textContent = t('modalErrorTitle');
-                    msg.textContent = "PDF.js Error: " + err.message;
                 }
+
+                currentProjectId = safeName;
+                await loadProjectsList();
+                await loadProject(currentProjectId);
+                closeModal();
+
+            } catch (err) {
+                spinner.style.display = 'none';
+                progressWrap.style.display = 'none';
+                closeBtn.style.display = 'block';
+                titleEl.textContent = t('modalErrorTitle');
+                msg.textContent = err.message;
             }
         }
 
@@ -2645,11 +2643,15 @@
             const title = document.getElementById('modalTitle');
             const msg = document.getElementById('modalMsg');
             const spinner = document.getElementById('modalSpinner');
+            const progressWrap = document.getElementById('modalProgressWrapper');
+            const progressBar = document.getElementById('modalProgressBar');
             const closeBtn = document.getElementById('modalCloseBtn');
 
             modal.classList.add('active');
             title.textContent = t('modalGeneratingTitle');
-            spinner.style.display = 'block';
+            spinner.style.display = 'none';
+            progressWrap.style.display = 'block';
+            progressBar.style.width = '0%';
             closeBtn.style.display = 'none';
             msg.textContent = t('modalGeneratingMsg');
 
@@ -2657,7 +2659,7 @@
                 try {
                     const res = await fetch(`/api/generate_video?project=${currentProjectId}`, { method: 'POST' });
                     const data = await res.json();
-                    spinner.style.display = 'none';
+                    progressWrap.style.display = 'none';
                     closeBtn.style.display = 'block';
 
                     if (data.success) {
@@ -2668,7 +2670,7 @@
                         msg.textContent = data.message || "Error generating video.";
                     }
                 } catch (err) {
-                    spinner.style.display = 'none';
+                    progressWrap.style.display = 'none';
                     closeBtn.style.display = 'block';
                     title.textContent = t('modalErrorTitle');
                     msg.textContent = err.message;
@@ -2701,7 +2703,9 @@
 
                     for (let i = 0; i < slides.length; i++) {
                         const s = slides[i];
-                        msg.textContent = `${t('modalGeneratingMsg')} (Slide ${s.number} / ${slides.length})`;
+                        const pct = Math.round(((i + 1) / slides.length) * 100);
+                        progressBar.style.width = `${pct}%`;
+                        msg.innerHTML = `<span style="font-size:1.1rem; font-weight:800; color:var(--brand-navy);">Assemblage Diapositive ${s.number} / ${slides.length} (${pct}%)</span>`;
                         
                         const img = new Image();
                         await new Promise((resolve) => {
@@ -2733,13 +2737,13 @@
                     const videoBlob = new Blob(chunks, { type: mimeType });
                     const videoUrl = URL.createObjectURL(videoBlob);
 
-                    spinner.style.display = 'none';
+                    progressWrap.style.display = 'none';
                     closeBtn.style.display = 'block';
                     title.textContent = t('modalSuccessTitle');
                     msg.innerHTML = t('modalSuccessMsg').replace('{url}', videoUrl);
 
                 } catch (err) {
-                    spinner.style.display = 'none';
+                    progressWrap.style.display = 'none';
                     closeBtn.style.display = 'block';
                     title.textContent = t('modalErrorTitle');
                     msg.textContent = "Client Video Export Error: " + err.message;
