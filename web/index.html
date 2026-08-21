@@ -85,6 +85,8 @@
             padding: 2px 8px;
             border-radius: 999px;
             font-weight: 600;
+        }
+
         /* Project Selector in Header */
         .project-selector-wrap {
             display: flex;
@@ -1988,6 +1990,8 @@
         let currentFontSize = 1.15;
         let saveTimeout = null;
         let selectedPdfBytes = null;
+        let audioClipboard = null;
+        let selectedAudioDeviceId = localStorage.getItem('slidepunch_selected_mic') || '';
 
         async function init() {
             window.addEventListener('resize', resizeCanvas);
@@ -2948,8 +2952,6 @@
         // MICROPHONE SOURCE SELECTION & ENUMERATION
         // ==========================================
 
-        let selectedAudioDeviceId = localStorage.getItem('slidepunch_selected_mic') || '';
-
         async function populateMicrophoneList() {
             if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
             try {
@@ -3229,12 +3231,6 @@
                 slide.hasAudio = true;
                 slide.audioDuration = dur;
                 slide.audioBlob = blob;
-                    updatedAt: new Date().toISOString()
-                });
-
-                slide.hasAudio = true;
-                slide.audioDuration = dur;
-                slide.audioBlob = blob;
                 recordingState = 'idle';
 
                 showSavedToast();
@@ -3257,8 +3253,6 @@
         // ==========================================
         // EDIT MODE: CUT, COPY & PASTE AUDIO CLIPBOARD
         // ==========================================
-
-        let audioClipboard = null;
 
         function copySelectedRange() {
             if (selectionStart === null || selectionEnd === null || selectionEnd <= selectionStart) return;

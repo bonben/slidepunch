@@ -68,6 +68,23 @@ def get_all_projects():
             })
     return projects
 
+def find_slide_image(proj_dir, idx):
+    slide_dir = proj_dir / "slide_images"
+    if not slide_dir.exists():
+        return None
+    candidates = [
+        slide_dir / f"slide-{idx:02d}.png",
+        slide_dir / f"slide-{idx}.png",
+        slide_dir / f"slide-{idx:03d}.png",
+        slide_dir / f"slide_{idx:02d}.png",
+        slide_dir / f"slide_{idx}.png",
+        slide_dir / f"slide_{idx:03d}.png",
+    ]
+    for c in candidates:
+        if c.exists():
+            return c
+    return None
+
 def parse_project_slides(project_id):
     proj_dir = PROJECTS_DIR / project_id
     if not proj_dir.exists():
@@ -123,7 +140,8 @@ def parse_project_slides(project_id):
         timing_info = timings.get(idx, {"topic": custom_topic, "target": "1:00", "cumulative": ""})
         clean_script = script_by_num.get(idx, "")
         
-        img_name = f"slide-{idx:02d}.png"
+        slide_img = find_slide_image(proj_dir, idx)
+        img_name = slide_img.name if slide_img else f"slide-{idx:02d}.png"
         wav_name = f"slide_{idx:02d}.wav"
         has_audio = (recordings_dir / wav_name).exists()
         
@@ -161,11 +179,12 @@ def update_slide_script_in_project(project_id, slide_num, new_text):
         notes_file.write_text(initial_content, encoding="utf-8")
     
     content = notes_file.read_text(encoding="utf-8")
-    pattern = rf'(###\s+Slide\s+{slide_num}(?::[^\n]*)?\n)(.*?)(?=\n---\n|\Z)'
-    match = re.search(pattern, content, re.DOTALL)
+    
+    pattern = rf'(###\s+Slide\s+{slide_num}(?::[^\n]*)?\n)(.*?)(?=(?:###\s+Slide|\Z))'
+    match = re.search(pattern, content, flags=re.DOTALL)
     
     cleaned_lines = []
-    for line in new_text.strip().split('\n'):
+    for line in new_text.split('\n'):
         l = line.strip()
         while l.startswith('>'):
             l = l[1:].strip()
@@ -232,11 +251,11 @@ def render_project_video(project_id):
     
     for s in slides:
         num = s["number"]
-        img = proj_dir / "slide_images" / f"slide-{num:02d}.png"
+        img = find_slide_image(proj_dir, num)
         wav = proj_dir / "recordings" / f"slide_{num:02d}.wav"
         seg_mp4 = temp_dir / f"seg_{num:02d}.mp4"
         
-        if not img.exists():
+        if not img or not img.exists():
             return False, f"Image manquante: slide-{num:02d}.png"
         
         if not wav.exists():
@@ -310,6 +329,12 @@ class SlidePunchHandler(SimpleHTTPRequestHandler):
             proj_id = params.get("project", ["hdr_demo"])[0]
             filename = params.get("file", ["slide-01.png"])[0]
             file_path = PROJECTS_DIR / proj_id / "slide_images" / filename
+            if not file_path.exists():
+                m = re.search(r'(\d+)', filename)
+                if m:
+                    alt = find_slide_image(PROJECTS_DIR / proj_id, int(m.group(1)))
+                    if alt and alt.exists():
+                        file_path = alt
             if file_path.exists():
                 self.send_response(200)
                 self.send_header("Content-Type", "image/png")
@@ -325,6 +350,15 @@ class SlidePunchHandler(SimpleHTTPRequestHandler):
             proj_id = params.get("project", ["hdr_demo"])[0]
             filename = params.get("file", ["slide_01.wav"])[0]
             file_path = PROJECTS_DIR / proj_id / "recordings" / filename
+            if not file_path.exists():
+                m = re.search(r'(\d+)', filename)
+                if m:
+                    idx = int(m.group(1))
+                    for alt_name in [f"slide_{idx:02d}.wav", f"slide_{idx}.wav", f"slide_{idx:03d}.wav"]:
+                        alt = PROJECTS_DIR / proj_id / "recordings" / alt_name
+                        if alt.exists():
+                            file_path = alt
+                            break
             if not file_path.exists():
                 self.send_error(404, "Audio file not found")
                 return
