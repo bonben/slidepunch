@@ -1342,6 +1342,7 @@
                 toastCopied: "Audio Copied ✓",
                 toastCut: "Audio Cut to Clipboard ✓",
                 toastPasted: "Audio Pasted ✓",
+                toastCleared: "Audio cleared ✓",
                 prevBtn: "◀ Previous (←)",
                 nextBtn: "Next (→) ▶",
                 landingTitle: "🥊 SlidePunch Presentation Studio",
@@ -1407,6 +1408,7 @@
                 toastCopied: "Audio copié ✓",
                 toastCut: "Audio coupé dans le presse-papier ✓",
                 toastPasted: "Audio collé ✓",
+                toastCleared: "Audio effacé ✓",
                 prevBtn: "◀ Précédente (←)",
                 nextBtn: "Suivante (→) ▶",
                 landingTitle: "🥊 Studio de Présentation SlidePunch",
@@ -2453,12 +2455,10 @@
         }
 
         // ==========================================
-        // DELETE ALL AUDIO FOR CURRENT SLIDE
+        // CLEAR AUDIO FOR CURRENT SLIDE
         // ==========================================
 
-        async function deleteCurrentSlideAudio(silent = false) {
-            if (!silent && !confirm(t('confirmClearAudio'))) return;
-
+        async function deleteCurrentSlideAudio() {
             stopPlayback();
             clearSelection();
 
@@ -2484,7 +2484,7 @@
             renderSidebar();
             updateGlobalStats();
             updateControlUI();
-            showSavedToast();
+            showSavedToast(t('toastCleared') || "Audio effacé ✓");
         }
 
         // ==========================================
