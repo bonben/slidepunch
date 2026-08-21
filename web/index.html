@@ -145,6 +145,127 @@
             color: var(--brand-navy);
         }
 
+        .btn-studio-nav {
+            background: linear-gradient(135deg, #0284C7, #0369A1);
+            color: white;
+            border: 1px solid #38BDF8;
+            padding: 4px 12px;
+            border-radius: 6px;
+            font-size: 0.78rem;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            transition: all 0.15s;
+            box-shadow: 0 2px 6px rgba(2, 132, 199, 0.35);
+        }
+
+        .btn-studio-nav:hover {
+            background: #0284C7;
+            transform: translateY(-1px);
+        }
+
+        .landing-recent-projects {
+            margin-top: 18px;
+            padding: 16px 20px;
+            background: #F8FAFC;
+            border: 1.5px solid #E2E8F0;
+            border-radius: 12px;
+            text-align: left;
+        }
+
+        .recent-projects-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            font-weight: 800;
+            color: var(--brand-navy);
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .recent-projects-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 12px;
+        }
+
+        .recent-project-card {
+            background: white;
+            border: 1.5px solid #E2E8F0;
+            border-radius: 10px;
+            padding: 12px 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            gap: 10px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+
+        .recent-project-card:hover {
+            border-color: var(--brand-cyan);
+            box-shadow: 0 6px 16px rgba(6, 182, 212, 0.18);
+            transform: translateY(-2px);
+        }
+
+        .recent-project-card.active-proj {
+            border-color: #0284C7;
+            background: linear-gradient(135deg, #FFFFFF, #F0F9FF);
+        }
+
+        .recent-proj-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            overflow: hidden;
+        }
+
+        .recent-proj-icon {
+            font-size: 1.5rem;
+            flex-shrink: 0;
+        }
+
+        .recent-proj-name {
+            font-weight: 700;
+            font-size: 0.92rem;
+            color: var(--brand-navy);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 150px;
+        }
+
+        .recent-proj-meta {
+            font-size: 0.74rem;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .btn-open-proj {
+            background: #E0F2FE;
+            color: #0284C7;
+            font-size: 0.78rem;
+            font-weight: 700;
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: 1px solid #BAE6FD;
+            transition: all 0.15s;
+            white-space: nowrap;
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+
+        .recent-project-card:hover .btn-open-proj {
+            background: var(--brand-cyan);
+            color: white;
+            border-color: var(--brand-cyan);
+        }
+
         .global-actions {
             display: flex;
             align-items: center;
@@ -1059,6 +1180,9 @@
             <span style="font-size:0.8rem; color:#94A3B8;" id="txtProjectLabel">Project:</span>
             <select class="project-select" id="projectSelect" onchange="onProjectChange(this.value)">
             </select>
+            <button class="btn-studio-nav" id="btnOpenStudioNav" onclick="openCurrentProjectStudio()" title="Ouvrir le Studio d'enregistrement">
+                <span>🎙️</span> <span id="txtStudioNav">Studio</span>
+            </button>
             <button class="btn-new-proj" id="btnNewProj" onclick="openNewProjectModal()">+ New</button>
         </div>
 
@@ -1092,6 +1216,16 @@
                 <div class="dropzone-icon">📄</div>
                 <div class="dropzone-title" id="txtDropzoneTitle">Drop your Presentation PDF here</div>
                 <div class="dropzone-sub" id="txtDropzoneSub">or click to browse from your computer (LaTeX Beamer, PowerPoint, Typst, Keynote)</div>
+            </div>
+
+            <!-- Existing Projects List (Shown when 1 or more projects exist) -->
+            <div class="landing-recent-projects" id="landingRecentProjects" style="display:none;">
+                <div class="recent-projects-header">
+                    <span id="txtRecentProjectsTitle">📂 Reprendre un projet existant</span>
+                </div>
+                <div class="recent-projects-grid" id="recentProjectsGrid">
+                    <!-- Injected dynamically -->
+                </div>
             </div>
 
             <!-- Quick Features -->
@@ -1343,6 +1477,9 @@
                 toastCut: "Audio Cut to Clipboard ✓",
                 toastPasted: "Audio Pasted ✓",
                 toastCleared: "Audio cleared ✓",
+                recentProjectsTitle: "📂 Continue Existing Project",
+                openStudioBtn: "Open Studio ➔",
+                studioNavBtn: "Studio",
                 prevBtn: "◀ Previous (←)",
                 nextBtn: "Next (→) ▶",
                 landingTitle: "🥊 SlidePunch Presentation Studio",
@@ -1409,6 +1546,9 @@
                 toastCut: "Audio coupé dans le presse-papier ✓",
                 toastPasted: "Audio collé ✓",
                 toastCleared: "Audio effacé ✓",
+                recentProjectsTitle: "📂 Reprendre un projet existant",
+                openStudioBtn: "Ouvrir le Studio ➔",
+                studioNavBtn: "Studio",
                 prevBtn: "◀ Précédente (←)",
                 nextBtn: "Suivante (→) ▶",
                 landingTitle: "🥊 Studio de Présentation SlidePunch",
@@ -1460,6 +1600,7 @@
             updateModeBadge();
             document.getElementById('txtProjectLabel').textContent = t('projectLabel');
             document.getElementById('btnNewProj').textContent = t('newProjectBtn');
+            document.getElementById('txtStudioNav').textContent = t('studioNavBtn');
             document.getElementById('txtExportVideo').textContent = t('exportVideoBtn');
             document.getElementById('txtExportZip').textContent = t('exportZipBtn');
             document.getElementById('txtSlidesHeader').textContent = t('slidesHeader');
@@ -1485,6 +1626,10 @@
             document.getElementById('txtLandingSub').textContent = t('landingSub');
             document.getElementById('txtDropzoneTitle').textContent = t('dropzoneTitle');
             document.getElementById('txtDropzoneSub').textContent = t('dropzoneSub');
+            
+            const titleRecent = document.getElementById('txtRecentProjectsTitle');
+            if (titleRecent) titleRecent.textContent = t('recentProjectsTitle');
+
             document.getElementById('feat1Title').textContent = t('feat1Title');
             document.getElementById('feat1Sub').textContent = t('feat1Sub');
             document.getElementById('feat2Title').textContent = t('feat2Title');
@@ -1507,6 +1652,7 @@
             if (micBox) micBox.title = t('selectMicTitle');
             populateMicrophoneList();
 
+            renderLandingProjects();
             renderSidebar();
             updateControlUI();
             updateGlobalStats();
@@ -1652,6 +1798,48 @@
             document.getElementById('globalStats').style.display = 'none';
             document.getElementById('btnExportZip').style.display = 'none';
             document.getElementById('btnExportVideo').style.display = 'none';
+            renderLandingProjects();
+        }
+
+        function renderLandingProjects() {
+            const container = document.getElementById('landingRecentProjects');
+            const grid = document.getElementById('recentProjectsGrid');
+            if (!container || !grid) return;
+
+            if (!projects || projects.length === 0) {
+                container.style.display = 'none';
+                return;
+            }
+
+            container.style.display = 'block';
+            grid.innerHTML = '';
+
+            projects.forEach(p => {
+                const card = document.createElement('div');
+                card.className = `recent-project-card ${p.id === currentProjectId ? 'active-proj' : ''}`;
+                card.onclick = () => loadProject(p.id);
+
+                card.innerHTML = `
+                    <div class="recent-proj-info">
+                        <div class="recent-proj-icon">📊</div>
+                        <div>
+                            <div class="recent-proj-name" title="${p.title || p.id}">${p.title || p.id}</div>
+                            <div class="recent-proj-meta">${p.slideCount || 0} ${t('slidesHeader').toLowerCase()}</div>
+                        </div>
+                    </div>
+                    <button class="btn-open-proj" onclick="event.stopPropagation(); loadProject('${p.id}');">
+                        ${t('openStudioBtn') || "Ouvrir ➔"}
+                    </button>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        async function openCurrentProjectStudio() {
+            const targetId = currentProjectId || (projects.length > 0 ? projects[0].id : null);
+            if (targetId) {
+                await loadProject(targetId);
+            }
         }
 
         function showStudioView() {
@@ -1716,6 +1904,10 @@
                 projects = await new Promise(r => { req.onsuccess = () => r(req.result || []); });
             }
 
+            if (!currentProjectId && projects.length > 0) {
+                currentProjectId = projects[0].id;
+            }
+
             projects.forEach(p => {
                 const opt = document.createElement('option');
                 opt.value = p.id;
@@ -1727,6 +1919,7 @@
             if (projects.length > 0) {
                 document.getElementById('projectSelectorWrap').style.display = 'flex';
             }
+            renderLandingProjects();
         }
 
         async function onProjectChange(projId) {
