@@ -145,6 +145,27 @@
             color: var(--brand-navy);
         }
 
+        .btn-studio-nav {
+            background: linear-gradient(135deg, #0284C7, #0369A1);
+            color: white;
+            border: 1px solid #38BDF8;
+            padding: 4px 12px;
+            border-radius: 6px;
+            font-size: 0.78rem;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            transition: all 0.15s;
+            box-shadow: 0 2px 6px rgba(2, 132, 199, 0.35);
+        }
+
+        .btn-studio-nav:hover {
+            background: #0284C7;
+            transform: translateY(-1px);
+        }
+
         .landing-recent-projects {
             margin-top: 18px;
             padding: 16px 20px;
@@ -1151,7 +1172,6 @@
     <header>
         <div class="brand" onclick="showLandingView()">
             <h1>SlidePunch 🥊</h1>
-            <span class="badge">Studio</span>
             <span class="mode-badge" id="appModeBadge">⚡ Native Server</span>
         </div>
 
@@ -1159,6 +1179,9 @@
             <span style="font-size:0.8rem; color:#94A3B8;" id="txtProjectLabel">Project:</span>
             <select class="project-select" id="projectSelect" onchange="onProjectChange(this.value)">
             </select>
+            <button class="btn-studio-nav" id="btnOpenStudioNav" onclick="openCurrentProjectStudio()" title="Ouvrir le Studio d'enregistrement">
+                <span>🎙️</span> <span id="txtStudioNav">Studio</span>
+            </button>
             <button class="btn-new-proj" id="btnNewProj" onclick="openNewProjectModal()">+ New</button>
         </div>
 
@@ -1576,6 +1599,8 @@
             updateModeBadge();
             document.getElementById('txtProjectLabel').textContent = t('projectLabel');
             document.getElementById('btnNewProj').textContent = t('newProjectBtn');
+            const studioNav = document.getElementById('txtStudioNav');
+            if (studioNav) studioNav.textContent = t('studioNavBtn') || "Studio";
             document.getElementById('txtExportVideo').textContent = t('exportVideoBtn');
             document.getElementById('txtExportZip').textContent = t('exportZipBtn');
             document.getElementById('txtSlidesHeader').textContent = t('slidesHeader');
