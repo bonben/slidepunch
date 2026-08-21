@@ -68,6 +68,27 @@ def get_all_projects():
             })
     return projects
 
+def extract_slide_titles_from_pdf(pdf_path, num_pages):
+    titles = {}
+    for idx in range(1, num_pages + 1):
+        try:
+            res = subprocess.run(
+                ["pdftotext", "-f", str(idx), "-l", str(idx), str(pdf_path), "-"],
+                capture_output=True, text=True
+            )
+            raw_lines = [l.strip() for l in res.stdout.split("\n") if l.strip()]
+            filtered = [
+                l for l in raw_lines 
+                if not re.match(r'^\d+(\s*/\s*\d+)?$', l) and not l.lower().startswith("slide")
+            ]
+            if filtered:
+                candidate = filtered[0]
+                if len(candidate) <= 80:
+                    titles[idx] = candidate
+        except Exception:
+            pass
+    return titles
+
 def parse_project_slides(project_id):
     proj_dir = PROJECTS_DIR / project_id
     if not proj_dir.exists():
@@ -76,7 +97,6 @@ def parse_project_slides(project_id):
     notes_file = proj_dir / "notes.md"
     content = notes_file.read_text(encoding="utf-8") if notes_file.exists() else ""
     
-    # Timing map from markdown table if present
     timings = {}
     table_match = re.findall(r'\|\s*\*\*(\d+)\*\*\s*\|\s*([^|]+)\|\s*([0-9:]+)\s*\|\s*([0-9:]+)\s*\|', content)
     for num, topic, target, cum in table_match:
@@ -85,21 +105,19 @@ def parse_project_slides(project_id):
     slide_images_dir = proj_dir / "slide_images"
     recordings_dir = proj_dir / "recordings"
     slide_images = sorted(slide_images_dir.glob("slide-*.png")) if slide_images_dir.exists() else []
-    total_slides = max(len(slide_images), 1)
-
-    # Slide script blocks: ### Slide X: ...
-    slide_blocks = re.split(r'###\s+Slide\s+(\d+):\s*([^\n]+)', content)
+    
+    # Parse slide script blocks: ### Slide X or ### Slide X: Title
     script_by_num = {}
     topic_by_num = {}
     
-    for i in range(1, len(slide_blocks), 3):
-        slide_num = int(slide_blocks[i])
-        slide_title = slide_blocks[i+1].strip()
-        body = slide_blocks[i+2].split('---')[0].strip()
+    matches = list(re.finditer(r'###\s+Slide\s+(\d+)(?::\s*([^\n]*))?\n(.*?)(?=(?:###\s+Slide|\Z))', content, re.DOTALL))
+    for m in matches:
+        slide_num = int(m.group(1))
+        raw_title = (m.group(2) or "").strip()
+        body = m.group(3).split('---')[0].strip()
         
-        # Clean lines: remove leading >
         cleaned_lines = []
-        for line in body.strip().split('\n'):
+        for line in body.split('\n'):
             l = line.strip()
             while l.startswith('>'):
                 l = l[1:].strip()
@@ -113,14 +131,17 @@ def parse_project_slides(project_id):
         clean_script = re.sub(r'\*(.*?)\*', r'\1', clean_script)
         
         script_by_num[slide_num] = clean_script
-        topic_by_num[slide_num] = slide_title
+        if raw_title and raw_title.lower() != f"slide {slide_num}" and raw_title.lower() != "slide":
+            topic_by_num[slide_num] = raw_title
+        else:
+            topic_by_num[slide_num] = ""
 
     slides = []
     num_to_iterate = max(len(slide_images), len(script_by_num))
     
     for idx in range(1, num_to_iterate + 1):
-        slide_title = topic_by_num.get(idx, f"Slide {idx}")
-        timing_info = timings.get(idx, {"topic": slide_title, "target": "1:00", "cumulative": ""})
+        custom_topic = topic_by_num.get(idx, "")
+        timing_info = timings.get(idx, {"topic": custom_topic, "target": "1:00", "cumulative": ""})
         clean_script = script_by_num.get(idx, "")
         
         img_name = f"slide-{idx:02d}.png"
@@ -140,8 +161,8 @@ def parse_project_slides(project_id):
 
         slides.append({
             "number": idx,
-            "title": slide_title,
-            "topic": timing_info.get("topic", slide_title),
+            "title": custom_topic or f"Slide {idx}",
+            "topic": timing_info.get("topic", custom_topic),
             "targetTime": timing_info.get("target", "1:00"),
             "cumulative": timing_info.get("cumulative", ""),
             "script": clean_script,
@@ -161,7 +182,7 @@ def update_slide_script_in_project(project_id, slide_num, new_text):
         notes_file.write_text(initial_content, encoding="utf-8")
     
     content = notes_file.read_text(encoding="utf-8")
-    pattern = rf'(###\s+Slide\s+{slide_num}:[^\n]+\n)(.*?)(?=\n---\n|\Z)'
+    pattern = rf'(###\s+Slide\s+{slide_num}(?::[^\n]*)?\n)(.*?)(?=\n---\n|\Z)'
     match = re.search(pattern, content, re.DOTALL)
     
     cleaned_lines = []
@@ -176,7 +197,7 @@ def update_slide_script_in_project(project_id, slide_num, new_text):
     if match:
         new_content = re.sub(pattern, rf'\g<1>{formatted_body}', content, flags=re.DOTALL)
     else:
-        new_content = content.rstrip() + f"\n\n---\n\n### Slide {slide_num}: Slide {slide_num}\n{formatted_body}"
+        new_content = content.rstrip() + f"\n\n---\n\n### Slide {slide_num}\n{formatted_body}"
         
     notes_file.write_text(new_content, encoding="utf-8")
     return True
@@ -210,12 +231,17 @@ def create_project_from_pdf(project_name, pdf_bytes, title=None):
     }
     (proj_dir / "metadata.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     
+    # Extract real titles from PDF text
+    extracted_titles = extract_slide_titles_from_pdf(pdf_path, len(slide_images))
+    
     # Create starter notes.md
     notes_path = proj_dir / "notes.md"
     if not notes_path.exists():
         notes_lines = [f"# {title or project_name}\n\n## Speaker Script\n\n"]
         for idx in range(1, len(slide_images) + 1):
-            notes_lines.append(f"### Slide {idx}: Slide {idx}\n> Enter your speech script for Slide {idx} here...\n\n---\n\n")
+            custom_t = extracted_titles.get(idx, "")
+            header_str = f"### Slide {idx}: {custom_t}" if custom_t else f"### Slide {idx}"
+            notes_lines.append(f"{header_str}\n> Enter your speech script for Slide {idx} here...\n\n---\n\n")
         notes_path.write_text("".join(notes_lines), encoding="utf-8")
         
     return safe_id

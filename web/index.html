@@ -1995,12 +1995,15 @@
                 const statusClass = s.hasAudio ? 'recorded' : 'pending';
                 const statusText = s.hasAudio ? `✓ ${formatSec(s.audioDuration)}` : t('todoBadge');
 
+                const topicStr = (s.topic || '').trim();
+                const isGeneric = !topicStr || topicStr.toLowerCase() === `slide ${s.number}` || topicStr.toLowerCase() === 'slide';
+
                 item.innerHTML = `
                     <div class="slide-item-header">
                         <span class="slide-num">Slide ${s.number}</span>
                         <span class="slide-status ${statusClass}">${statusText}</span>
                     </div>
-                    <div class="slide-topic">${s.topic || `Slide ${s.number}`}</div>
+                    ${!isGeneric ? `<div class="slide-topic">${topicStr}</div>` : ''}
                 `;
                 list.appendChild(item);
             });
@@ -2023,7 +2026,9 @@
                 document.getElementById('currentSlideImg').src = slide.image;
             }
 
-            document.getElementById('prompterSlideTitle').textContent = `Slide ${slide.number} : ${slide.topic || ''}`;
+            const topicStr = (slide.topic || '').trim();
+            const isGeneric = !topicStr || topicStr.toLowerCase() === `slide ${slide.number}` || topicStr.toLowerCase() === 'slide';
+            document.getElementById('prompterSlideTitle').textContent = isGeneric ? `Slide ${slide.number}` : `Slide ${slide.number} : ${topicStr}`;
             document.getElementById('prompterTarget').textContent = `${t('targetPrefix')} ${slide.targetTime || '1:00'}`;
             
             const textarea = document.getElementById('prompterScript');
@@ -3070,14 +3075,24 @@
                         const imgDataUrl = renderCanvas.toDataURL('image/png');
                         
                         const textContent = await page.getTextContent();
-                        const pageText = textContent.items.map(item => item.str).join(' ');
-                        const firstLine = pageText.split('.')[0].slice(0, 50) || `Slide ${pageNum}`;
+                        const rawLines = textContent.items
+                            .map(item => item.str.trim())
+                            .filter(str => str.length > 0 && !/^\d+(\s*\/\s*\d+)?$/.test(str));
+                        
+                        let detectedTitle = '';
+                        if (rawLines.length > 0) {
+                            const first = rawLines[0];
+                            if (first.length <= 80 && first.toLowerCase() !== `slide ${pageNum}` && first.toLowerCase() !== 'slide') {
+                                detectedTitle = first;
+                            }
+                        }
 
                         extractedSlides.push({
                             number: pageNum,
-                            topic: firstLine,
+                            topic: detectedTitle,
+                            title: detectedTitle || `Slide ${pageNum}`,
                             targetTime: '1:00',
-                            script: pageText.trim(),
+                            script: rawLines.join(' ').trim(),
                             image: imgDataUrl
                         });
                     }
