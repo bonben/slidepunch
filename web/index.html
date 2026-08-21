@@ -2585,63 +2585,80 @@
 
             modal.classList.add('active');
             titleEl.textContent = t('modalImportingTitle');
-            spinner.style.display = 'none';
-            progressWrap.style.display = 'block';
-            progressBar.style.width = '0%';
             closeBtn.style.display = 'none';
-            msg.innerHTML = `<strong>${t('modalImportingMsg')}</strong>`;
 
             const safeName = title.toLowerCase().replace(/[^a-z0-9]/g, '_');
 
-            // Clone buffer for PDF.js so it does not get detached by the worker
-            const pdfCopyForPdfJs = new Uint8Array(pdfBytes.slice(0));
-            const pdfBlobToSend = new Blob([pdfBytes], { type: 'application/pdf' });
+            if (isServerMode) {
+                // Native Server Mode: Poppler pdftoppm (instant & ultra fast)
+                spinner.style.display = 'block';
+                progressWrap.style.display = 'none';
+                msg.innerHTML = `<span style="font-size:1.05rem; font-weight:700; color:var(--brand-navy);">Extraction rapide des diapositives 1080p...</span>`;
 
-            try {
-                // PDF.js extraction with live progress counter & progress bar
-                const loadingTask = pdfjsLib.getDocument({ data: pdfCopyForPdfJs });
-                const pdfDoc = await loadingTask.promise;
-                const numPages = pdfDoc.numPages;
-
-                const extractedSlides = [];
-                for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-                    const pct = Math.round((pageNum / numPages) * 100);
-                    progressBar.style.width = `${pct}%`;
-                    msg.innerHTML = `<span style="font-size:1.15rem; font-weight:800; color:var(--brand-navy);">Diapositive ${pageNum} / ${numPages} (${pct}%)</span><br><span style="color:var(--text-muted); font-size:0.85rem;">Extraction haute résolution 1080p...</span>`;
-
-                    const page = await pdfDoc.getPage(pageNum);
-                    const viewport = page.getViewport({ scale: 2.0 });
-                    
-                    const renderCanvas = document.createElement('canvas');
-                    renderCanvas.width = viewport.width;
-                    renderCanvas.height = viewport.height;
-                    const renderCtx = renderCanvas.getContext('2d');
-                    
-                    await page.render({ canvasContext: renderCtx, viewport: viewport }).promise;
-                    const imgDataUrl = renderCanvas.toDataURL('image/png');
-                    
-                    const textContent = await page.getTextContent();
-                    const pageText = textContent.items.map(item => item.str).join(' ');
-                    const firstLine = pageText.split('.')[0].slice(0, 50) || `Slide ${pageNum}`;
-
-                    extractedSlides.push({
-                        number: pageNum,
-                        topic: firstLine,
-                        targetTime: '1:00',
-                        script: pageText.trim(),
-                        image: imgDataUrl
-                    });
-                }
-
-                if (isServerMode) {
-                    msg.innerHTML = `<span style="font-size:1rem; font-weight:700; color:var(--brand-navy);">Finalisation du projet...</span>`;
+                const pdfBlobToSend = new Blob([pdfBytes], { type: 'application/pdf' });
+                try {
                     const res = await fetch(`/api/projects/new?name=${safeName}&title=${encodeURIComponent(title)}`, {
                         method: 'POST',
                         body: pdfBlobToSend
                     });
                     const data = await res.json();
-                    if (!data.success) throw new Error(data.error || "Server error");
-                } else {
+                    if (data.success) {
+                        currentProjectId = data.projectId;
+                        await loadProjectsList();
+                        await loadProject(currentProjectId);
+                        closeModal();
+                    } else {
+                        throw new Error(data.error || "Erreur d'import");
+                    }
+                } catch (err) {
+                    spinner.style.display = 'none';
+                    closeBtn.style.display = 'block';
+                    titleEl.textContent = t('modalErrorTitle');
+                    msg.textContent = err.message;
+                }
+            } else {
+                // Web Mode (GitHub Pages): In-Browser PDF.js with live progress bar & slide counter
+                spinner.style.display = 'none';
+                progressWrap.style.display = 'block';
+                progressBar.style.width = '0%';
+
+                const pdfCopyForPdfJs = new Uint8Array(pdfBytes.slice(0));
+
+                try {
+                    const loadingTask = pdfjsLib.getDocument({ data: pdfCopyForPdfJs });
+                    const pdfDoc = await loadingTask.promise;
+                    const numPages = pdfDoc.numPages;
+
+                    const extractedSlides = [];
+                    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+                        const pct = Math.round((pageNum / numPages) * 100);
+                        progressBar.style.width = `${pct}%`;
+                        msg.innerHTML = `<span style="font-size:1.15rem; font-weight:800; color:var(--brand-navy);">Diapositive ${pageNum} / ${numPages} (${pct}%)</span><br><span style="color:var(--text-muted); font-size:0.85rem;">Extraction haute résolution 1080p...</span>`;
+
+                        const page = await pdfDoc.getPage(pageNum);
+                        const viewport = page.getViewport({ scale: 2.0 });
+                        
+                        const renderCanvas = document.createElement('canvas');
+                        renderCanvas.width = viewport.width;
+                        renderCanvas.height = viewport.height;
+                        const renderCtx = renderCanvas.getContext('2d');
+                        
+                        await page.render({ canvasContext: renderCtx, viewport: viewport }).promise;
+                        const imgDataUrl = renderCanvas.toDataURL('image/png');
+                        
+                        const textContent = await page.getTextContent();
+                        const pageText = textContent.items.map(item => item.str).join(' ');
+                        const firstLine = pageText.split('.')[0].slice(0, 50) || `Slide ${pageNum}`;
+
+                        extractedSlides.push({
+                            number: pageNum,
+                            topic: firstLine,
+                            targetTime: '1:00',
+                            script: pageText.trim(),
+                            image: imgDataUrl
+                        });
+                    }
+
                     const newProj = {
                         id: safeName,
                         title: title,
@@ -2656,19 +2673,18 @@
                             ...s
                         });
                     });
+
+                    currentProjectId = safeName;
+                    await loadProjectsList();
+                    await loadProject(currentProjectId);
+                    closeModal();
+
+                } catch (err) {
+                    progressWrap.style.display = 'none';
+                    closeBtn.style.display = 'block';
+                    titleEl.textContent = t('modalErrorTitle');
+                    msg.textContent = err.message;
                 }
-
-                currentProjectId = safeName;
-                await loadProjectsList();
-                await loadProject(currentProjectId);
-                closeModal();
-
-            } catch (err) {
-                spinner.style.display = 'none';
-                progressWrap.style.display = 'none';
-                closeBtn.style.display = 'block';
-                titleEl.textContent = t('modalErrorTitle');
-                msg.textContent = err.message;
             }
         }
 
