@@ -2654,6 +2654,7 @@
         async function deleteCurrentSlideAudio() {
             stopPlayback();
             clearSelection();
+            audioClipboard = null;
 
             currentSamples = [];
             totalDuration = 0.0;
