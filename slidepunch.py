@@ -392,7 +392,19 @@ class SlidePunchHandler(SimpleHTTPRequestHandler):
         params = urllib.parse.parse_qs(parsed.query)
         content_length = int(self.headers.get("Content-Length", 0))
         
-        if path == "/api/save_audio":
+        if path == "/api/delete_audio":
+            proj_id = params.get("project", [""])[0]
+            slide_idx = int(params.get("slide", [1])[0])
+            wav_file = PROJECTS_DIR / proj_id / "recordings" / f"slide_{slide_idx:02d}.wav"
+            if wav_file.exists():
+                wav_file.unlink()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"success": True}).encode("utf-8"))
+            return
+
+        elif path == "/api/save_audio":
             post_data = self.rfile.read(content_length)
             proj_id = params.get("project", ["hdr_demo"])[0]
             slide_idx = int(params.get("slide", [1])[0])

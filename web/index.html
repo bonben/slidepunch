@@ -23,8 +23,10 @@
             --text-dark: #0F172A;
             --text-muted: #64748B;
             --danger: #EF4444;
+            --danger-dark: #DC2626;
             --warning: #F59E0B;
             --success: #10B981;
+            --edit-orange: #EA580C;
         }
 
         * {
@@ -329,7 +331,7 @@
            MAIN STUDIO WORKSPACE
         ========================================== */
         .workspace {
-            display: none; /* Shown once a project is active */
+            display: none;
             grid-template-columns: 260px 1.15fr 0.85fr;
             flex: 1;
             overflow: hidden;
@@ -604,9 +606,11 @@
             flex-shrink: 0;
         }
 
-        /* Bottom Studio Dock: Waveform Timeline + Recording Controls */
+        /* ==========================================
+           BOTTOM DOCK: WAVEFORM + STREAMLINED CONTROLS
+        ========================================== */
         .studio-dock {
-            display: none; /* Shown once a project is active */
+            display: none;
             background: white;
             border-top: 1px solid var(--brand-border);
             flex-direction: column;
@@ -663,6 +667,7 @@
             cursor: crosshair;
             overflow: hidden;
             border: 1px solid rgba(6, 182, 212, 0.3);
+            user-select: none;
         }
 
         #waveformCanvas {
@@ -679,13 +684,14 @@
             justify-content: space-between;
             gap: 16px;
             background: white;
+            min-height: 58px;
         }
 
         .dock-left {
             display: flex;
             align-items: center;
             gap: 14px;
-            min-width: 200px;
+            min-width: 220px;
         }
 
         .vu-container {
@@ -719,65 +725,92 @@
         .dock-center {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
             flex-wrap: wrap;
             justify-content: center;
+            flex: 1;
         }
 
         .btn-ctl {
             border: none;
-            padding: 9px 18px;
+            padding: 9px 20px;
             border-radius: 999px;
-            font-size: 0.85rem;
+            font-size: 0.88rem;
             font-weight: 700;
             cursor: pointer;
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 8px;
             transition: all 0.15s;
+            user-select: none;
         }
 
         .btn-ctl:hover {
             transform: translateY(-1px);
         }
 
-        .btn-rec-start {
-            background: var(--danger);
+        /* Record Toggle Button */
+        .btn-rec-toggle {
+            background: linear-gradient(135deg, #EF4444, #DC2626);
             color: white;
-            box-shadow: 0 3px 10px rgba(239, 68, 68, 0.4);
+            box-shadow: 0 3px 12px rgba(239, 68, 68, 0.4);
         }
 
-        .btn-rec-punchin {
+        .btn-rec-toggle.recording {
+            background: #DC2626;
+            animation: pulseRec 1.5s infinite;
+            box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7);
+        }
+
+        @keyframes pulseRec {
+            0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(220, 38, 38, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+        }
+
+        /* Edit Mode Buttons */
+        .btn-cut-selection {
             background: linear-gradient(135deg, #EA580C, #C2410C);
             color: white;
-            box-shadow: 0 3px 10px rgba(194, 65, 12, 0.4);
+            box-shadow: 0 3px 12px rgba(234, 88, 12, 0.4);
         }
 
-        .btn-rec-pause {
-            background: var(--warning);
-            color: white;
-            box-shadow: 0 3px 10px rgba(245, 158, 11, 0.4);
-        }
-
-        .btn-rec-resume {
+        .btn-play-selection {
             background: #0284C7;
             color: white;
-            box-shadow: 0 3px 10px rgba(2, 132, 199, 0.4);
+            padding: 8px 14px;
+            font-size: 0.8rem;
         }
 
-        .btn-rec-finish {
-            background: #15803D;
-            color: white;
-            box-shadow: 0 3px 10px rgba(21, 128, 61, 0.4);
-        }
-
-        .btn-rec-cancel {
+        .btn-cancel-selection {
             background: #E2E8F0;
             color: #475569;
+            padding: 8px 14px;
+            font-size: 0.8rem;
         }
 
-        .btn-rec-cancel:hover {
+        .btn-cancel-selection:hover {
             background: #CBD5E1;
+        }
+
+        .btn-delete-all {
+            background: #FEE2E2;
+            border: 1px solid #FECACA;
+            color: #DC2626;
+            padding: 7px 14px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            border-radius: 999px;
+            cursor: pointer;
+            transition: all 0.15s;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .btn-delete-all:hover {
+            background: #FCA5A5;
+            color: #7F1D1D;
         }
 
         .timer-display {
@@ -789,11 +822,22 @@
             text-align: center;
         }
 
+        .selection-badge {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: #C2410C;
+            background: #FFF7ED;
+            border: 1px solid #FFEDD5;
+            padding: 4px 10px;
+            border-radius: 6px;
+        }
+
         .dock-right {
             display: flex;
             align-items: center;
             gap: 10px;
-            min-width: 280px;
+            min-width: 260px;
             justify-content: flex-end;
         }
 
@@ -911,7 +955,6 @@
             100% { transform: rotate(360deg); }
         }
 
-        /* Form styling for New Project Modal */
         .form-group {
             margin-bottom: 16px;
             display: flex;
@@ -987,12 +1030,12 @@
         </div>
     </header>
 
-    <!-- LANDING / UPLOAD SCREEN (Shown on first visit or when no project is open) -->
+    <!-- LANDING / UPLOAD SCREEN -->
     <div class="landing-view" id="landingView">
         <div class="landing-card">
             <div class="landing-header">
                 <h2 id="txtLandingTitle">🥊 SlidePunch Presentation Studio</h2>
-                <p id="txtLandingSub">Record your slides slide-by-slide with real-time waveform, surgical audio punch-in repair, and 1-click video export.</p>
+                <p id="txtLandingSub">Record your slides slide-by-slide with real-time waveform, surgical audio editing, and 1-click video export.</p>
             </div>
 
             <!-- Upload Dropzone -->
@@ -1006,8 +1049,8 @@
             <!-- Quick Features -->
             <div class="landing-features-grid">
                 <div class="feature-box">
-                    <h4 id="feat1Title">🔴 Audio Punch-In</h4>
-                    <p id="feat1Sub">Stumbled on a word? Click the waveform and resume recording seamlessly without redoing the slide.</p>
+                    <h4 id="feat1Title">🔴 1-Click Record & Cut</h4>
+                    <p id="feat1Sub">Hit record and stop. Drag on the waveform to select and cut out any stumble instantly.</p>
                 </div>
                 <div class="feature-box">
                     <h4 id="feat2Title">✏️ Live Prompter</h4>
@@ -1074,21 +1117,21 @@
 
     </div>
 
-    <!-- Bottom Studio Dock: Waveform Timeline + Controls -->
+    <!-- Bottom Studio Dock: Waveform Timeline + Streamlined Controls -->
     <div class="studio-dock" id="studioDock">
         
-        <!-- Interactive Waveform Timeline / Spectrogram with Playhead -->
+        <!-- Interactive Waveform Timeline / Spectrogram with Selection & Playhead -->
         <div class="waveform-section">
             <div class="waveform-header">
                 <div class="waveform-info">
-                    <span id="txtWaveformTitle">📊 <strong>Waveform</strong> (click to move playhead or resume recording)</span>
+                    <span id="txtWaveformTitle">📊 <strong>Waveform</strong></span>
                     <span class="playhead-badge" id="playheadTimeBadge">00:00.0</span>
                 </div>
                 <div id="waveformHint" style="color:#94A3B8;">
-                    Click on the waveform to place the cursor and punch-in from this exact spot.
+                    Click to place playhead. Drag across to select a range to cut.
                 </div>
             </div>
-            <div class="canvas-container" id="canvasContainer" onclick="onCanvasClick(event)">
+            <div class="canvas-container" id="canvasContainer">
                 <canvas id="waveformCanvas"></canvas>
             </div>
         </div>
@@ -1105,40 +1148,37 @@
                 </div>
             </div>
 
-            <!-- Center: Recording Actions -->
+            <!-- Center: Streamlined Actions (Capture Mode vs Edit Mode) -->
             <div class="dock-center">
                 
-                <!-- Start recording (from 0:00) -->
-                <button class="btn-ctl btn-rec-start" id="btnStartRec" onclick="startFreshRecording()">
-                    <span>●</span> <span id="startRecLabel">Record (Space)</span>
-                </button>
+                <!-- 1. CAPTURE MODE CONTROLS -->
+                <div id="captureControls" style="display:flex; align-items:center; gap:12px;">
+                    <button class="btn-ctl btn-rec-toggle" id="btnToggleRec" onclick="toggleRecording()">
+                        <span id="recIcon">●</span> <span id="txtRecToggle">Record (Space)</span>
+                    </button>
+                    <div class="timer-display" id="timerDisplay">00:00</div>
+                    <button class="btn-delete-all" id="btnDeleteAll" onclick="deleteCurrentSlideAudio()" style="display:none;" title="Delete all audio for this slide">
+                        <span>🗑️</span> <span id="txtDeleteAll">Delete All</span>
+                    </button>
+                </div>
 
-                <!-- Punch-in button (resume from playhead) -->
-                <button class="btn-ctl btn-rec-punchin" id="btnPunchInRec" style="display:none;" onclick="startPunchInRecording()">
-                    <span>🔴</span> <span id="punchInLabel">Resume at 00:00.0</span>
-                </button>
+                <!-- 2. EDIT MODE CONTROLS (Triggered on Waveform Drag Selection) -->
+                <div id="editControls" style="display:none; align-items:center; gap:10px;">
+                    <button class="btn-ctl btn-cut-selection" id="btnCutSelection" onclick="cutSelectedRange()">
+                        <span>✂️</span> <span id="txtCutSelection">Cut Selection</span>
+                    </button>
+                    <button class="btn-ctl btn-play-selection" id="btnPlaySelection" onclick="playSelectedRange()">
+                        <span>▶</span> <span id="txtPlaySelection">Play</span>
+                    </button>
+                    <button class="btn-ctl btn-cancel-selection" id="btnCancelSelection" onclick="clearSelection()">
+                        <span>✕</span> <span id="txtCancelSelection">Deselect (Esc)</span>
+                    </button>
+                    <div class="selection-badge" id="selectionTimeBadge">00:00.0 (0.0s)</div>
+                    <button class="btn-delete-all" onclick="deleteCurrentSlideAudio()" title="Delete all audio for this slide">
+                        <span>🗑️</span>
+                    </button>
+                </div>
 
-                <!-- Pause button -->
-                <button class="btn-ctl btn-rec-pause" id="btnPauseRec" style="display:none;" onclick="pauseRecording()">
-                    <span>⏸</span> <span id="txtPauseBtn">Pause (P)</span>
-                </button>
-
-                <!-- Resume button -->
-                <button class="btn-ctl btn-rec-resume" id="btnResumeRec" style="display:none;" onclick="resumeRecording()">
-                    <span>▶</span> <span id="txtResumeBtn">Resume (P)</span>
-                </button>
-
-                <!-- Finalize button -->
-                <button class="btn-ctl btn-rec-finish" id="btnFinishRec" style="display:none;" onclick="finishRecording()">
-                    <span>⏹</span> <span id="txtFinishBtn">Finish & Save (Enter)</span>
-                </button>
-
-                <!-- Cancel button -->
-                <button class="btn-ctl btn-rec-cancel" id="btnCancelRec" style="display:none;" onclick="cancelRecording()">
-                    <span>✖</span> <span id="txtCancelBtn">Cancel</span>
-                </button>
-
-                <div class="timer-display" id="timerDisplay">00:00</div>
             </div>
 
             <!-- Right: Playback controls -->
@@ -1163,7 +1203,7 @@
             <div class="modal-body">
                 <div class="form-group">
                     <label class="form-label" id="txtModalTitleLabel">Project Title:</label>
-                    <input type="text" id="newProjTitle" class="form-input" placeholder="e.g. My Conference Presentation 2026">
+                    <input type="text" id="newProjTitle" class="form-input" placeholder="e.g. My Presentation 2026">
                 </div>
                 <div class="form-group">
                     <label class="form-label" id="txtModalPdfLabel">Slide PDF File:</label>
@@ -1215,25 +1255,25 @@
                 prompterPlaceholder: "Write or edit the speech script for this slide here...",
                 prompterHint1: "✏️ <strong>Editable script</strong> (auto-saved)",
                 prompterHint2: "💡 Click outside to re-enable <kbd>Space</kbd>",
-                waveformTitle: "📊 <strong>Waveform</strong> (click to move playhead or resume recording)",
-                waveformHint: "Click on the waveform to place the cursor and punch-in from this exact spot.",
+                waveformTitle: "📊 <strong>Waveform</strong>",
+                waveformHint: "Click to move playhead. Drag across to select a range to cut.",
                 micLevel: "Mic Level",
                 recordStart: "Record (Space)",
-                reRecordAll: "Re-record All (Space)",
-                punchInResume: "Resume at",
-                pauseBtn: "Pause (P)",
-                resumeBtn: "Resume (P)",
-                finishBtn: "Finish & Save (Enter)",
-                cancelBtn: "Cancel",
-                savingTimer: "Saving...",
+                recordStop: "Stop & Save (Space)",
+                reRecord: "Re-record (Space)",
+                cutSelection: "Cut Selection",
+                playSelection: "Play Selection",
+                cancelSelection: "Deselect (Esc)",
+                deleteAll: "Delete All",
+                confirmClearAudio: "Delete all audio for this slide?",
                 prevBtn: "◀ Previous (←)",
                 nextBtn: "Next (→) ▶",
                 landingTitle: "🥊 SlidePunch Presentation Studio",
-                landingSub: "Record your presentation slide-by-slide with real-time waveform, surgical audio punch-in repair, and 1-click video export.",
+                landingSub: "Record your presentation slide-by-slide with real-time waveform, instant audio editing, and 1-click video export.",
                 dropzoneTitle: "Drop your Presentation PDF here",
                 dropzoneSub: "or click to browse from your computer (LaTeX Beamer, PowerPoint, Typst, Keynote)",
-                feat1Title: "🔴 Audio Punch-In",
-                feat1Sub: "Stumbled on a word? Click the waveform and resume recording seamlessly without redoing the slide.",
+                feat1Title: "🔴 1-Click Record & Cut",
+                feat1Sub: "Hit record and stop. Drag on the waveform to select and cut out any stumble instantly.",
                 feat2Title: "✏️ Live Prompter",
                 feat2Sub: "Synchronized editable speaker script next to your slide, auto-saved in Markdown.",
                 feat3Title: "🎬 1-Click Video",
@@ -1253,8 +1293,7 @@
                 modalErrorTitle: "❌ Error",
                 closeBtn: "Close",
                 recordedStats: "recorded",
-                confirmPendingGen: "There are {count} slide(s) without audio.\nDo you want to generate the video anyway?",
-                confirmCancelRec: "A recording is in progress. Do you want to cancel it to switch slides?"
+                confirmPendingGen: "There are {count} slide(s) without audio.\nDo you want to generate the video anyway?"
             },
             fr: {
                 serverModeBadge: "⚡ Serveur Local",
@@ -1271,25 +1310,25 @@
                 prompterPlaceholder: "Écrivez ou modifiez le script de cette slide ici...",
                 prompterHint1: "✏️ <strong>Script modifiable</strong> (auto-sauvegardé)",
                 prompterHint2: "💡 Cliquez en dehors pour réactiver <kbd>Espace</kbd>",
-                waveformTitle: "📊 <strong>Forme d'onde</strong> (cliquez pour déplacer la tête de lecture ou reprendre l'enregistrement)",
-                waveformHint: "Cliquez sur la forme d'onde pour déplacer le curseur et relancer depuis cet endroit précis.",
+                waveformTitle: "📊 <strong>Forme d'onde</strong>",
+                waveformHint: "Cliquez pour placer le curseur. Glissez pour sélectionner une plage à couper.",
                 micLevel: "Niveau Micro",
                 recordStart: "Enregistrer (Espace)",
-                reRecordAll: "Tout Réenregistrer (Espace)",
-                punchInResume: "Reprendre à",
-                pauseBtn: "Mettre en Pause (P)",
-                resumeBtn: "Reprendre (P)",
-                finishBtn: "Terminer & Valider (Entrée)",
-                cancelBtn: "Annuler",
-                savingTimer: "Sauvegarde...",
+                recordStop: "Arrêter & Sauver (Espace)",
+                reRecord: "Réenregistrer (Espace)",
+                cutSelection: "Couper la sélection",
+                playSelection: "Écouter",
+                cancelSelection: "Annuler (Échap)",
+                deleteAll: "Tout supprimer",
+                confirmClearAudio: "Supprimer tout l'audio de cette slide ?",
                 prevBtn: "◀ Précédente (←)",
                 nextBtn: "Suivante (→) ▶",
                 landingTitle: "🥊 Studio de Présentation SlidePunch",
-                landingSub: "Enregistrez vos présentations slide-par-slide avec spectrogramme temps réel, réparation punch-in et export vidéo 1-clic.",
+                landingSub: "Enregistrez vos présentations slide-par-slide avec spectrogramme temps réel, édition intuitive et export vidéo 1-clic.",
                 dropzoneTitle: "Déposez votre présentation PDF ici",
                 dropzoneSub: "ou cliquez pour choisir un fichier (LaTeX Beamer, PowerPoint, Typst, Keynote)",
-                feat1Title: "🔴 Réparation Punch-In",
-                feat1Sub: "Un bafouillage ? Cliquez sur le spectrogramme et reprenez instantanément sans tout recommencer.",
+                feat1Title: "🔴 1-Clic Record & Cut",
+                feat1Sub: "Enregistrez et coupez en glissant sur la forme d'onde sans logiciel de montage lourd.",
                 feat2Title: "✏️ Prompteur Direct",
                 feat2Sub: "Script de parole synchronisé à côté de vos slides, sauvegardé en Markdown.",
                 feat3Title: "🎬 Vidéo en 1 Clic",
@@ -1309,12 +1348,11 @@
                 modalErrorTitle: "❌ Erreur",
                 closeBtn: "Fermer",
                 recordedStats: "enregistrées",
-                confirmPendingGen: "Il reste {count} diapositive(s) sans audio.\nVoulez-vous générer la vidéo quand même ?",
-                confirmCancelRec: "Un enregistrement est en cours. Voulez-vous l'annuler pour changer de slide ?"
+                confirmPendingGen: "Il reste {count} diapositive(s) sans audio.\nVoulez-vous générer la vidéo quand même ?"
             }
         };
 
-        let currentLang = localStorage.getItem('slidepunch_lang') || 'en';
+        let currentLang = localStorage.getItem('slidepunch_lang') || 'fr';
 
         function t(key) {
             return i18n[currentLang][key] || key;
@@ -1344,10 +1382,11 @@
             document.getElementById('txtWaveformTitle').innerHTML = t('waveformTitle');
             document.getElementById('waveformHint').textContent = t('waveformHint');
             document.getElementById('txtMicLevel').textContent = t('micLevel');
-            document.getElementById('txtPauseBtn').textContent = t('pauseBtn');
-            document.getElementById('txtResumeBtn').textContent = t('resumeBtn');
-            document.getElementById('txtFinishBtn').textContent = t('finishBtn');
-            document.getElementById('txtCancelBtn').textContent = t('cancelBtn');
+
+            document.getElementById('txtCutSelection').textContent = t('cutSelection');
+            document.getElementById('txtPlaySelection').textContent = t('playSelection');
+            document.getElementById('txtCancelSelection').textContent = t('cancelSelection');
+            document.getElementById('txtDeleteAll').textContent = t('deleteAll');
 
             document.getElementById('txtLandingTitle').textContent = t('landingTitle');
             document.getElementById('txtLandingSub').textContent = t('landingSub');
@@ -1399,7 +1438,7 @@
 
         function openIndexedDB() {
             return new Promise((resolve, reject) => {
-                const req = indexedDB.open('SlidePunchDB', 1);
+                const req = indexedDB.open('SlidePunchDB', 2);
                 req.onupgradeneeded = (e) => {
                     const database = e.target.result;
                     if (!database.objectStoreNames.contains('projects')) {
@@ -1442,7 +1481,7 @@
         let slides = [];
         let currentIndex = 0;
         
-        // Recording state
+        // Recording state: 'idle' | 'recording' | 'saving'
         let recordingState = 'idle';
         let audioContext = null;
         let microphoneStream = null;
@@ -1460,6 +1499,13 @@
         let playheadPosition = 0.0;
         let totalDuration = 0.0;
 
+        // Range Selection / Edit Mode
+        let selectionStart = null;
+        let selectionEnd = null;
+        let isDraggingWaveform = false;
+        let dragStartX = 0;
+        let hasMovedDrag = false;
+
         const canvas = document.getElementById('waveformCanvas');
         const canvasCtx = canvas.getContext('2d');
 
@@ -1469,15 +1515,13 @@
 
         async function init() {
             window.addEventListener('resize', resizeCanvas);
-            resizeCanvas();
-
-            // Drag and drop listeners on landing card
+            setupWaveformMouseEvents();
             setupLandingDragAndDrop();
 
             await detectBackend();
             if (!isServerMode) {
                 await openIndexedDB();
-                // Purge any legacy demo data from browser cache
+                // Purge legacy demo cache
                 try {
                     const tx = db.transaction(['projects', 'slides', 'audio'], 'readwrite');
                     tx.objectStore('projects').delete('hdr_demo');
@@ -1493,8 +1537,6 @@
 
             applyLanguage();
             await loadProjectsList();
-
-            // ALWAYS start on the clean landing upload page
             showLandingView();
         }
 
@@ -1647,10 +1689,8 @@
                 const item = document.createElement('div');
                 item.className = `slide-item ${idx === currentIndex ? 'active' : ''}`;
                 item.onclick = () => {
-                    if (recordingState !== 'idle') {
-                        const leave = confirm(t('confirmCancelRec'));
-                        if (!leave) return;
-                        cancelRecording();
+                    if (recordingState === 'recording') {
+                        toggleRecording(); // auto-save current
                     }
                     loadSlide(idx);
                 };
@@ -1671,10 +1711,11 @@
 
         async function loadSlide(index) {
             if (index < 0 || index >= slides.length) return;
-            if (recordingState !== 'idle') {
-                cancelRecording();
+            if (recordingState === 'recording') {
+                await toggleRecording();
             }
             stopPlayback();
+            clearSelection();
 
             currentIndex = index;
             const slide = slides[currentIndex];
@@ -1742,9 +1783,8 @@
         }
 
         // ==========================================
-        // WAVEFORM RENDERING & INTERACTIVE PLAYHEAD
+        // WAVEFORM RENDERING WITH SELECTION & PLAYHEAD
         // ==========================================
-        let isDraggingPlayhead = false;
 
         function drawWaveform() {
             const w = canvas.width;
@@ -1814,6 +1854,27 @@
                 canvasCtx.fillRect(x, topY, 1.5, barHeight);
             }
 
+            // Draw Selection Highlight (Edit Mode)
+            if (selectionStart !== null && selectionEnd !== null && selectionEnd > selectionStart) {
+                const selX1 = Math.max(0, Math.min(w, (selectionStart / dur) * w));
+                const selX2 = Math.max(0, Math.min(w, (selectionEnd / dur) * w));
+                const selW = selX2 - selX1;
+
+                // Orange shaded overlay
+                canvasCtx.fillStyle = 'rgba(234, 88, 12, 0.35)';
+                canvasCtx.fillRect(selX1, 0, selW, h);
+
+                // Border
+                canvasCtx.strokeStyle = '#EA580C';
+                canvasCtx.lineWidth = 2;
+                canvasCtx.strokeRect(selX1, 0, selW, h);
+
+                // Handle bars
+                canvasCtx.fillStyle = '#EA580C';
+                canvasCtx.fillRect(selX1 - 2, 0, 4, h);
+                canvasCtx.fillRect(selX2 - 2, 0, 4, h);
+            }
+
             // Draw Playhead needle
             canvasCtx.strokeStyle = '#EA580C';
             canvasCtx.lineWidth = 2.5;
@@ -1832,71 +1893,105 @@
             document.getElementById('durTimeLabel').textContent = formatSec(totalDuration);
         }
 
-        function setPlayheadFromMouseEvent(e) {
-            if (recordingState === 'recording' || recordingState === 'saving') return;
-            if (currentSamples.length === 0 || totalDuration <= 0) return;
-
-            const rect = canvas.getBoundingClientRect();
-            const clickX = e.clientX - rect.left;
-            const ratio = Math.max(0, Math.min(1, clickX / rect.width));
-
-            playheadPosition = ratio * totalDuration;
-            drawWaveform();
-            updateControlUI();
-        }
-
-        function onCanvasClick(e) {
-            stopPlayback();
-            setPlayheadFromMouseEvent(e);
-        }
-
-        const canvasContainer = document.getElementById('canvasContainer');
-        canvasContainer.addEventListener('mousedown', (e) => {
-            isDraggingPlayhead = true;
-            stopPlayback();
-            setPlayheadFromMouseEvent(e);
-        });
-
-        window.addEventListener('mousemove', (e) => {
-            if (isDraggingPlayhead) {
-                setPlayheadFromMouseEvent(e);
-            }
-        });
-
-        window.addEventListener('mouseup', () => {
-            if (isDraggingPlayhead) {
-                isDraggingPlayhead = false;
-            }
-        });
-
         function updatePlayheadBadge(sec) {
             const badge = document.getElementById('playheadTimeBadge');
             badge.textContent = formatSecExact(sec);
         }
 
         // ==========================================
-        // RECORDING LOGIC WITH REAL-TIME WAVEFORM & PUNCH-IN
+        // MOUSE & SELECTION INTERACTION ON WAVEFORM
         // ==========================================
 
-        async function startFreshRecording() {
-            stopPlayback();
-            currentSamples = [];
-            totalDuration = 0.0;
-            playheadPosition = 0.0;
-            await beginMicrophoneCapture();
+        function setupWaveformMouseEvents() {
+            const container = document.getElementById('canvasContainer');
+
+            container.addEventListener('mousedown', (e) => {
+                if (recordingState === 'recording' || recordingState === 'saving') return;
+                if (currentSamples.length === 0 || totalDuration <= 0) return;
+
+                stopPlayback();
+                isDraggingWaveform = true;
+                hasMovedDrag = false;
+
+                const rect = canvas.getBoundingClientRect();
+                dragStartX = e.clientX - rect.left;
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if (!isDraggingWaveform || currentSamples.length === 0 || totalDuration <= 0) return;
+
+                const rect = canvas.getBoundingClientRect();
+                const currentX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+
+                if (Math.abs(currentX - dragStartX) > 5) {
+                    hasMovedDrag = true;
+                    const t1 = (dragStartX / rect.width) * totalDuration;
+                    const t2 = (currentX / rect.width) * totalDuration;
+
+                    selectionStart = Math.max(0, Math.min(t1, t2));
+                    selectionEnd = Math.min(totalDuration, Math.max(t1, t2));
+                    playheadPosition = selectionStart;
+
+                    drawWaveform();
+                    updateControlUI();
+                }
+            });
+
+            window.addEventListener('mouseup', (e) => {
+                if (!isDraggingWaveform) return;
+                isDraggingWaveform = false;
+
+                if (!hasMovedDrag) {
+                    // Single click: place cursor, deselect
+                    const rect = canvas.getBoundingClientRect();
+                    const clickX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+                    playheadPosition = (clickX / rect.width) * totalDuration;
+                    clearSelection();
+                } else {
+                    // Range selected -> keep Edit mode
+                    if (selectionEnd - selectionStart < 0.05) {
+                        clearSelection();
+                    } else {
+                        updateControlUI();
+                    }
+                }
+            });
         }
 
-        async function startPunchInRecording() {
+        function clearSelection() {
+            selectionStart = null;
+            selectionEnd = null;
+            drawWaveform();
+            updateControlUI();
+        }
+
+        // ==========================================
+        // 1-BUTTON RECORDING TOGGLE & IMMEDIATE AUTO-SAVE
+        // ==========================================
+
+        async function toggleRecording() {
+            if (recordingState === 'idle') {
+                await startRecording();
+            } else if (recordingState === 'recording') {
+                await stopAndSaveRecording();
+            }
+        }
+
+        async function startRecording() {
             stopPlayback();
-            const keepSamples = Math.floor(playheadPosition * sampleRate);
-            if (keepSamples < currentSamples.length) {
+            clearSelection();
+
+            // If we have existing audio and playhead is placed inside it, record from playhead (or fresh if 0:00)
+            if (playheadPosition > 0.05 && playheadPosition < totalDuration) {
+                const keepSamples = Math.floor(playheadPosition * sampleRate);
                 currentSamples = currentSamples.slice(0, keepSamples);
                 totalDuration = currentSamples.length / sampleRate;
+            } else if (playheadPosition >= totalDuration - 0.05 || playheadPosition <= 0.05) {
+                currentSamples = [];
+                totalDuration = 0.0;
+                playheadPosition = 0.0;
             }
-            await beginMicrophoneCapture();
-        }
 
-        async function beginMicrophoneCapture() {
             try {
                 ensureAudioContext();
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -1945,31 +2040,8 @@
             }
         }
 
-        function pauseRecording() {
-            if (recordingState === 'recording') {
-                recordingState = 'paused';
-                clearInterval(playbackAnimFrame);
-                document.getElementById('vuBar').style.width = '0%';
-                drawWaveform();
-                updateControlUI();
-            }
-        }
-
-        function resumeRecording() {
-            if (recordingState === 'paused') {
-                recordingState = 'recording';
-                updateControlUI();
-                playbackAnimFrame = setInterval(() => {
-                    if (recordingState === 'recording') {
-                        drawWaveform();
-                        document.getElementById('timerDisplay').textContent = formatSec(totalDuration);
-                    }
-                }, 80);
-            }
-        }
-
-        async function finishRecording() {
-            if (recordingState === 'idle' || currentSamples.length === 0) return;
+        async function stopAndSaveRecording() {
+            if (recordingState !== 'recording') return;
             recordingState = 'saving';
             clearInterval(playbackAnimFrame);
             document.getElementById('vuBar').style.width = '0%';
@@ -1980,25 +2052,8 @@
             if (scriptProcessor) scriptProcessor.disconnect();
             if (micSource) micSource.disconnect();
 
-            document.getElementById('timerDisplay').textContent = t('savingTimer');
-
             const wavBlob = encodeWAV(currentSamples, sampleRate);
             await saveSlideAudio(wavBlob);
-        }
-
-        function cancelRecording() {
-            recordingState = 'idle';
-            clearInterval(playbackAnimFrame);
-            document.getElementById('vuBar').style.width = '0%';
-
-            if (microphoneStream) {
-                microphoneStream.getTracks().forEach(t => t.stop());
-            }
-            if (scriptProcessor) scriptProcessor.disconnect();
-            if (micSource) micSource.disconnect();
-
-            fetchSlideAudioWav();
-            updateControlUI();
         }
 
         async function saveSlideAudio(blob) {
@@ -2017,10 +2072,11 @@
                         slide.audioDuration = data.duration;
                         slide.audioUrl = data.audioUrl;
                         recordingState = 'idle';
+                        showSavedToast();
                         await fetchSlideAudioWav();
-                        updateControlUI();
                         renderSidebar();
                         updateGlobalStats();
+                        updateControlUI();
                     } else {
                         alert(t('modalErrorTitle') + " : " + data.error);
                         recordingState = 'idle';
@@ -2047,11 +2103,103 @@
                 slide.audioBlob = blob;
                 recordingState = 'idle';
 
+                showSavedToast();
                 await fetchSlideAudioWav();
-                updateControlUI();
                 renderSidebar();
                 updateGlobalStats();
+                updateControlUI();
             }
+        }
+
+        function showSavedToast() {
+            const indicator = document.getElementById('saveIndicator');
+            indicator.textContent = t('savedBadge');
+            indicator.className = 'save-indicator visible';
+            setTimeout(() => {
+                indicator.classList.remove('visible');
+            }, 1800);
+        }
+
+        // ==========================================
+        // EDIT MODE: CUT SELECTION
+        // ==========================================
+
+        async function cutSelectedRange() {
+            if (selectionStart === null || selectionEnd === null || selectionEnd <= selectionStart) return;
+            if (currentSamples.length === 0) return;
+
+            const sStart = Math.max(0, Math.floor(selectionStart * sampleRate));
+            const sEnd = Math.min(currentSamples.length, Math.floor(selectionEnd * sampleRate));
+
+            if (sEnd <= sStart) return;
+
+            const before = currentSamples.slice(0, sStart);
+            const after = currentSamples.slice(sEnd);
+
+            // 5ms crossfade at the boundary to eliminate clicks
+            const xfadeLen = Math.min(Math.floor(0.005 * sampleRate), before.length, after.length);
+            for (let i = 0; i < xfadeLen; i++) {
+                const factor = i / xfadeLen;
+                const bIdx = before.length - xfadeLen + i;
+                if (bIdx >= 0 && i < after.length) {
+                    before[bIdx] = before[bIdx] * (1 - factor) + after[i] * factor;
+                }
+            }
+
+            currentSamples = before.concat(after.slice(xfadeLen));
+            totalDuration = currentSamples.length / sampleRate;
+            playheadPosition = Math.min(totalDuration, selectionStart);
+
+            clearSelection();
+
+            // Auto-save immediately!
+            if (currentSamples.length > 0) {
+                const wavBlob = encodeWAV(currentSamples, sampleRate);
+                await saveSlideAudio(wavBlob);
+            } else {
+                await deleteCurrentSlideAudio(true);
+            }
+        }
+
+        function playSelectedRange() {
+            if (selectionStart === null || selectionEnd === null || selectionEnd <= selectionStart) return;
+            playheadPosition = selectionStart;
+            startPlayback(selectionEnd);
+        }
+
+        // ==========================================
+        // DELETE ALL AUDIO FOR CURRENT SLIDE
+        // ==========================================
+
+        async function deleteCurrentSlideAudio(silent = false) {
+            if (!silent && !confirm(t('confirmClearAudio'))) return;
+
+            stopPlayback();
+            clearSelection();
+
+            currentSamples = [];
+            totalDuration = 0.0;
+            playheadPosition = 0.0;
+
+            const slide = slides[currentIndex];
+            slide.hasAudio = false;
+            slide.audioDuration = 0;
+            slide.audioBlob = null;
+
+            if (isServerMode) {
+                try {
+                    await fetch(`/api/delete_audio?project=${currentProjectId}&slide=${slide.number}`, { method: 'POST' });
+                } catch (e) {}
+            } else {
+                const tx = db.transaction(['audio'], 'readwrite');
+                tx.objectStore('audio').delete(`${currentProjectId}_${slide.number}`);
+            }
+
+            drawWaveform();
+            renderSidebar();
+            updateGlobalStats();
+            updateControlUI();
+            showSavedToast();
         }
 
         // ==========================================
@@ -2066,7 +2214,7 @@
             }
         }
 
-        function startPlayback() {
+        function startPlayback(stopAtTime = null) {
             if (currentSamples.length === 0) return;
             ensureAudioContext();
             stopPlayback();
@@ -2098,7 +2246,7 @@
             playbackSource.onended = () => {
                 if (isPlaying) {
                     stopPlayback();
-                    playheadPosition = totalDuration;
+                    playheadPosition = stopAtTime || totalDuration;
                     drawWaveform();
                 }
             };
@@ -2110,6 +2258,10 @@
                 if (isPlaying) {
                     const elapsed = audioContext.currentTime - playbackStartTime;
                     playheadPosition = Math.min(totalDuration, playbackStartOffset + elapsed);
+                    if (stopAtTime && playheadPosition >= stopAtTime) {
+                        stopPlayback();
+                        playheadPosition = stopAtTime;
+                    }
                     drawWaveform();
                 }
             }, 50);
@@ -2134,65 +2286,55 @@
         }
 
         // ==========================================
-        // UI UPDATE FOR RECORDING & BUTTONS
+        // UI UPDATE FOR STREAMLINED CONTROLS
         // ==========================================
 
         function updateControlUI() {
-            const btnStart = document.getElementById('btnStartRec');
-            const btnPunchIn = document.getElementById('btnPunchInRec');
-            const btnPause = document.getElementById('btnPauseRec');
-            const btnResume = document.getElementById('btnResumeRec');
-            const btnFinish = document.getElementById('btnFinishRec');
-            const btnCancel = document.getElementById('btnCancelRec');
+            const captureDiv = document.getElementById('captureControls');
+            const editDiv = document.getElementById('editControls');
+            const btnRec = document.getElementById('btnToggleRec');
+            const recIcon = document.getElementById('recIcon');
+            const txtRec = document.getElementById('txtRecToggle');
             const timer = document.getElementById('timerDisplay');
-            const punchLabel = document.getElementById('punchInLabel');
-            const startLabel = document.getElementById('startRecLabel');
+            const btnDeleteAll = document.getElementById('btnDeleteAll');
 
-            if (recordingState === 'idle') {
-                btnStart.style.display = 'flex';
-                btnPause.style.display = 'none';
-                btnResume.style.display = 'none';
-                btnFinish.style.display = 'none';
-                btnCancel.style.display = 'none';
+            // Check if Range Selection is active -> Switch to Edit Mode
+            const isEditing = selectionStart !== null && selectionEnd !== null && selectionEnd > selectionStart;
 
-                if (currentSamples.length > 0) {
-                    startLabel.textContent = t('reRecordAll');
-                    if (playheadPosition > 0.05 && playheadPosition < totalDuration) {
-                        btnPunchIn.style.display = 'flex';
-                        punchLabel.textContent = `${t('punchInResume')} ${formatSecExact(playheadPosition)}`;
-                    } else {
-                        btnPunchIn.style.display = 'none';
-                    }
+            if (isEditing) {
+                captureDiv.style.display = 'none';
+                editDiv.style.display = 'flex';
+
+                const selDur = selectionEnd - selectionStart;
+                document.getElementById('selectionTimeBadge').textContent = 
+                    `${formatSecExact(selectionStart)} ➔ ${formatSecExact(selectionEnd)} (${formatSecExact(selDur)})`;
+            } else {
+                captureDiv.style.display = 'flex';
+                editDiv.style.display = 'none';
+
+                if (recordingState === 'recording') {
+                    btnRec.className = 'btn-ctl btn-rec-toggle recording';
+                    recIcon.textContent = '⏹';
+                    txtRec.textContent = t('recordStop');
                     timer.textContent = formatSec(totalDuration);
-                    timer.style.color = '#15803D';
+                    timer.style.color = 'var(--danger)';
+                    btnDeleteAll.style.display = 'none';
                 } else {
-                    startLabel.textContent = t('recordStart');
-                    btnPunchIn.style.display = 'none';
-                    timer.textContent = "00:00";
-                    timer.style.color = 'var(--brand-navy)';
+                    btnRec.className = 'btn-ctl btn-rec-toggle';
+                    recIcon.textContent = '●';
+
+                    if (currentSamples.length > 0) {
+                        txtRec.textContent = t('reRecord');
+                        timer.textContent = formatSec(totalDuration);
+                        timer.style.color = '#15803D';
+                        btnDeleteAll.style.display = 'flex';
+                    } else {
+                        txtRec.textContent = t('recordStart');
+                        timer.textContent = "00:00";
+                        timer.style.color = 'var(--brand-navy)';
+                        btnDeleteAll.style.display = 'none';
+                    }
                 }
-            } else if (recordingState === 'recording') {
-                btnStart.style.display = 'none';
-                btnPunchIn.style.display = 'none';
-                btnPause.style.display = 'flex';
-                btnResume.style.display = 'none';
-                btnFinish.style.display = 'flex';
-                btnCancel.style.display = 'flex';
-                timer.style.color = 'var(--danger)';
-            } else if (recordingState === 'paused') {
-                btnStart.style.display = 'none';
-                btnPause.style.display = 'none';
-                btnResume.style.display = 'flex';
-                btnFinish.style.display = 'flex';
-                btnCancel.style.display = 'flex';
-                
-                if (playheadPosition > 0.05 && playheadPosition < totalDuration) {
-                    btnPunchIn.style.display = 'flex';
-                    punchLabel.textContent = `${t('punchInResume')} ${formatSecExact(playheadPosition)}`;
-                } else {
-                    btnPunchIn.style.display = 'none';
-                }
-                timer.style.color = 'var(--warning)';
             }
         }
 
@@ -2315,7 +2457,7 @@
         }
 
         // ==========================================
-        // NEW PROJECT / PDF IMPORT (Hybrid: pdf.js / pdftoppm)
+        // NEW PROJECT / PDF IMPORT
         // ==========================================
 
         function openNewProjectModal() {
@@ -2404,7 +2546,6 @@
                     msg.textContent = err.message;
                 }
             } else {
-                // Client-side PDF rendering using PDF.js
                 try {
                     const loadingTask = pdfjsLib.getDocument({ data: pdfBytes });
                     const pdfDoc = await loadingTask.promise;
@@ -2414,7 +2555,7 @@
                     for (let pageNum = 1; pageNum <= numPages; pageNum++) {
                         msg.textContent = `${t('modalImportingMsg')} (${pageNum} / ${numPages})`;
                         const page = await pdfDoc.getPage(pageNum);
-                        const viewport = page.getViewport({ scale: 2.0 }); // High DPI
+                        const viewport = page.getViewport({ scale: 2.0 });
                         
                         const renderCanvas = document.createElement('canvas');
                         renderCanvas.width = viewport.width;
@@ -2424,7 +2565,6 @@
                         await page.render({ canvasContext: renderCtx, viewport: viewport }).promise;
                         const imgDataUrl = renderCanvas.toDataURL('image/png');
                         
-                        // Extract text for prompter
                         const textContent = await page.getTextContent();
                         const pageText = textContent.items.map(item => item.str).join(' ');
                         const firstLine = pageText.split('.')[0].slice(0, 50) || `Slide ${pageNum}`;
@@ -2512,7 +2652,6 @@
                     msg.textContent = err.message;
                 }
             } else {
-                // Client-side Video Stitching using MediaRecorder + Web Audio
                 try {
                     ensureAudioContext();
                     const vCanvas = document.createElement('canvas');
@@ -2538,24 +2677,20 @@
 
                     recorder.start();
 
-                    // Play and draw each slide in sequence
                     for (let i = 0; i < slides.length; i++) {
                         const s = slides[i];
                         msg.textContent = `${t('modalGeneratingMsg')} (Slide ${s.number} / ${slides.length})`;
                         
-                        // Load image
                         const img = new Image();
                         await new Promise((resolve) => {
                             img.onload = resolve;
                             img.src = s.image;
                         });
 
-                        // Draw slide
                         vCtx.fillStyle = '#0F172A';
                         vCtx.fillRect(0, 0, 1920, 1080);
                         vCtx.drawImage(img, 0, 0, 1920, 1080);
 
-                        // Play audio if present
                         if (s.hasAudio && s.audioBlob) {
                             const buffer = await audioContext.decodeAudioData(await s.audioBlob.arrayBuffer());
                             const srcNode = audioContext.createBufferSource();
@@ -2566,7 +2701,6 @@
                                 srcNode.onended = resolve;
                             });
                         } else {
-                            // Default 3s pause for slides without audio
                             await new Promise(r => setTimeout(r, 3000));
                         }
                     }
@@ -2603,7 +2737,6 @@
             const zip = new JSZip();
             const projFolder = zip.folder(currentProjectId);
 
-            // Export notes.md
             let notesMd = `# ${currentProjectId}\n\n`;
             slides.forEach(s => {
                 notesMd += `### Slide ${s.number}: ${s.topic || ''}\n`;
@@ -2611,7 +2744,6 @@
             });
             projFolder.file("notes.md", notesMd);
 
-            // Export recordings
             const recFolder = projFolder.folder("recordings");
             for (let s of slides) {
                 if (s.hasAudio) {
@@ -2667,26 +2799,21 @@
 
             if (e.code === 'Space') {
                 e.preventDefault();
-                if (recordingState === 'idle') {
-                    startFreshRecording();
-                } else if (recordingState === 'recording') {
-                    pauseRecording();
-                } else if (recordingState === 'paused') {
-                    resumeRecording();
-                }
+                toggleRecording();
             } else if (e.code === 'KeyP') {
                 e.preventDefault();
-                if (recordingState === 'recording') {
-                    pauseRecording();
-                } else if (recordingState === 'paused') {
-                    resumeRecording();
-                } else if (recordingState === 'idle') {
+                if (recordingState === 'idle') {
                     togglePlayAudio();
                 }
-            } else if (e.code === 'Enter') {
-                if (recordingState === 'recording' || recordingState === 'paused') {
+            } else if (e.code === 'Delete' || e.code === 'Backspace') {
+                if (selectionStart !== null && selectionEnd !== null) {
                     e.preventDefault();
-                    finishRecording();
+                    cutSelectedRange();
+                }
+            } else if (e.code === 'Escape') {
+                if (selectionStart !== null || selectionEnd !== null) {
+                    e.preventDefault();
+                    clearSelection();
                 }
             } else if (e.code === 'ArrowLeft') {
                 if (recordingState === 'idle') prevSlide();
