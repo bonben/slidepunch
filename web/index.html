@@ -690,8 +690,41 @@
         .dock-left {
             display: flex;
             align-items: center;
-            gap: 14px;
-            min-width: 220px;
+            gap: 12px;
+            min-width: 240px;
+        }
+
+        .mic-selector-box {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            background: #F8FAFC;
+            border: 1px solid var(--brand-border);
+            border-radius: 6px;
+            padding: 4px 8px;
+            transition: all 0.2s;
+            max-width: 175px;
+        }
+
+        .mic-selector-box:hover, .mic-selector-box:focus-within {
+            border-color: var(--brand-cyan);
+            background: white;
+            box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.12);
+        }
+
+        .mic-select {
+            background: transparent;
+            color: var(--brand-navy);
+            border: none;
+            font-size: 0.75rem;
+            font-weight: 600;
+            font-family: inherit;
+            max-width: 140px;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            overflow: hidden;
+            outline: none;
+            cursor: pointer;
         }
 
         .vu-container {
@@ -1138,8 +1171,14 @@
 
         <!-- Controls Bar -->
         <div class="dock-controls-bar">
-            <!-- Left: VU Meter -->
+            <!-- Left: Microphone Selector & VU Meter -->
             <div class="dock-left">
+                <div class="mic-selector-box" id="micSelectorBox" title="Sélectionner la source microphone">
+                    <span style="font-size:0.85rem; flex-shrink:0;">🎙️</span>
+                    <select id="micSelect" class="mic-select" onchange="onMicrophoneChanged()" title="Source microphone">
+                        <option value="">Microphone par défaut</option>
+                    </select>
+                </div>
                 <div class="vu-container">
                     <div class="vu-label" id="txtMicLevel">Mic Level</div>
                     <div class="vu-bar-wrapper">
@@ -1263,6 +1302,8 @@
                 prompterHint2: "💡 Click outside to re-enable <kbd>Space</kbd>",
                 waveformTitle: "📊 <strong>Waveform</strong>",
                 waveformHint: "Click to move playhead. Drag across to select a range to cut.",
+                defaultMic: "Default Microphone",
+                selectMicTitle: "Select Microphone",
                 micLevel: "Mic Level",
                 recordStart: "Record (Space)",
                 recordStop: "Stop & Save (Space)",
@@ -1320,6 +1361,8 @@
                 prompterHint2: "💡 Cliquez en dehors pour réactiver <kbd>Espace</kbd>",
                 waveformTitle: "📊 <strong>Forme d'onde</strong>",
                 waveformHint: "Cliquez pour placer le curseur. Glissez pour sélectionner une plage à couper.",
+                defaultMic: "Micro par défaut",
+                selectMicTitle: "Sélectionner le microphone",
                 micLevel: "Niveau Micro",
                 recordStart: "Enregistrer (Espace)",
                 recordStop: "Arrêter & Sauver (Espace)",
@@ -1419,6 +1462,10 @@
             if (!selectedPdfBytes) {
                 document.getElementById('dropzoneText').innerHTML = t('modalDropzoneText');
             }
+
+            const micBox = document.getElementById('micSelectorBox');
+            if (micBox) micBox.title = t('selectMicTitle');
+            populateMicrophoneList();
 
             renderSidebar();
             updateControlUI();
@@ -1546,6 +1593,13 @@
             }
 
             applyLanguage();
+            await populateMicrophoneList();
+            if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+                navigator.mediaDevices.addEventListener('devicechange', () => {
+                    populateMicrophoneList();
+                });
+            }
+
             await loadProjectsList();
             showLandingView();
         }
@@ -1992,6 +2046,54 @@
         }
 
         // ==========================================
+        // MICROPHONE SOURCE SELECTION & ENUMERATION
+        // ==========================================
+
+        let selectedAudioDeviceId = localStorage.getItem('slidepunch_selected_mic') || '';
+
+        async function populateMicrophoneList() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const audioInputs = devices.filter(d => d.kind === 'audioinput');
+                const select = document.getElementById('micSelect');
+                if (!select) return;
+
+                const currentVal = selectedAudioDeviceId || select.value;
+                select.innerHTML = '';
+
+                const defaultOpt = document.createElement('option');
+                defaultOpt.value = '';
+                defaultOpt.textContent = t('defaultMic') || "Microphone par défaut";
+                select.appendChild(defaultOpt);
+
+                let matched = false;
+                audioInputs.forEach((device, idx) => {
+                    const opt = document.createElement('option');
+                    opt.value = device.deviceId;
+                    opt.textContent = device.label || `Microphone ${idx + 1}`;
+                    if (device.deviceId && device.deviceId === currentVal) {
+                        opt.selected = true;
+                        matched = true;
+                    }
+                    select.appendChild(opt);
+                });
+
+                if (!matched && currentVal === '') {
+                    select.value = '';
+                }
+            } catch (e) {
+                console.warn("Could not enumerate audio devices:", e);
+            }
+        }
+
+        function onMicrophoneChanged() {
+            const select = document.getElementById('micSelect');
+            selectedAudioDeviceId = select.value;
+            localStorage.setItem('slidepunch_selected_mic', selectedAudioDeviceId);
+        }
+
+        // ==========================================
         // 1-BUTTON RECORDING TOGGLE & IMMEDIATE AUTO-SAVE
         // ==========================================
 
@@ -2020,8 +2122,16 @@
 
             try {
                 ensureAudioContext();
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                
+                const audioConstraints = selectedAudioDeviceId
+                    ? { deviceId: { exact: selectedAudioDeviceId } }
+                    : true;
+
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
                 microphoneStream = stream;
+
+                // Re-populate microphone list once getUserMedia grants permission so device labels are available
+                populateMicrophoneList();
 
                 micSource = audioContext.createMediaStreamSource(stream);
                 scriptProcessor = audioContext.createScriptProcessor(4096, 1, 1);
