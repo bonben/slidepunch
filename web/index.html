@@ -783,6 +783,86 @@
             box-shadow: 0 2px 8px rgba(2, 132, 199, 0.35);
         }
 
+        /* While the browser is asking for camera permission: the button shows the
+           wait, and the overlay stays hidden until a stream actually arrives. */
+        /* ==========================================
+           UNSUPPORTED DEVICE GATE
+           The studio is desktop-only: it needs a precise pointer for waveform
+           editing and camera framing, and a wide screen for the slide + prompter
+           layout. Rather than let a phone user hit a broken UI, say so plainly.
+           ========================================== */
+        .unsupported-gate {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 99999;
+            background: linear-gradient(160deg, #0F172A, #1E293B);
+            color: #E2E8F0;
+            padding: 28px 22px;
+            text-align: center;
+            overflow-y: auto;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .unsupported-gate.visible { display: flex; }
+
+        .unsupported-inner { max-width: 480px; margin: auto; }
+
+        .unsupported-gate .ug-icon {
+            font-size: 3.2rem;
+            margin-bottom: 14px;
+        }
+
+        .unsupported-gate h1 {
+            font-size: 1.4rem;
+            font-weight: 800;
+            margin-bottom: 14px;
+            color: #fff;
+            line-height: 1.25;
+        }
+
+        .unsupported-gate p {
+            font-size: 0.98rem;
+            line-height: 1.6;
+            margin-bottom: 14px;
+            color: #CBD5E1;
+        }
+
+        .unsupported-gate .ug-action {
+            font-weight: 700;
+            color: #7DD3FC;
+        }
+
+        .unsupported-gate .ug-anyway {
+            margin-top: 22px;
+            background: transparent;
+            border: 1px solid #475569;
+            color: #94A3B8;
+            padding: 9px 16px;
+            border-radius: 9px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .unsupported-gate .ug-anyway:hover {
+            border-color: #64748B;
+            color: #CBD5E1;
+        }
+
+        .btn-webcam-toggle.pending {
+            opacity: 0.65;
+            cursor: progress;
+            border-color: var(--brand-cyan);
+            animation: webcamPending 1s ease-in-out infinite;
+        }
+
+        @keyframes webcamPending {
+            0%, 100% { opacity: 0.55; }
+            50%      { opacity: 0.9; }
+        }
+
         .camera-select {
             background: #F8FAFC;
             border: 1px solid var(--brand-border);
@@ -1394,6 +1474,17 @@
 </head>
 <body>
 
+    <!-- Unsupported device gate (phones / tablets): the studio is desktop-only -->
+    <div class="unsupported-gate" id="unsupportedGate">
+        <div class="unsupported-inner">
+            <div class="ug-icon">🖥️</div>
+            <h1 id="ugTitle">Ordinateur requis</h1>
+            <p id="ugBody"></p>
+            <p class="ug-action" id="ugAction"></p>
+            <button class="ug-anyway" id="ugAnyway" onclick="dismissUnsupportedGate()"></button>
+        </div>
+    </div>
+
     <!-- Header -->
     <header>
         <div class="brand" onclick="showLandingView()">
@@ -1732,6 +1823,10 @@
                 prompterHint2: "💡 Click outside to re-enable <kbd>Space</kbd>",
                 waveformTitle: "📊 <strong>Waveform</strong>",
                 waveformHint: "Click to place playhead. Drag across to select a range to cut.",
+                unsupportedTitle: "Desktop computer required",
+                unsupportedBody: "SlidePunch does not work on phones or tablets. The studio needs a real keyboard, a precise pointer and a wide screen to record slide by slide, edit the waveform and frame the camera.",
+                unsupportedAction: "Please reopen this page on a Windows, macOS or Linux computer.",
+                unsupportedAnyway: "Continue anyway (not supported)",
                 defaultMic: "Default Microphone",
                 selectMicTitle: "Select Microphone",
                 micLevel: "Mic Level",
@@ -1815,6 +1910,10 @@
                 prompterHint2: "💡 Cliquez en dehors pour réactiver <kbd>Espace</kbd>",
                 waveformTitle: "📊 <strong>Forme d'onde</strong>",
                 waveformHint: "Cliquez pour placer le curseur. Glissez pour sélectionner une plage à couper.",
+                unsupportedTitle: "Ordinateur requis",
+                unsupportedBody: "SlidePunch ne fonctionne pas sur téléphone ni sur tablette. Le studio a besoin d'un vrai clavier, d'un pointeur précis et d'un grand écran pour enregistrer diapo par diapo, éditer la forme d'onde et cadrer la caméra.",
+                unsupportedAction: "Merci de rouvrir cette page sur un ordinateur Windows, macOS ou Linux.",
+                unsupportedAnyway: "Continuer quand même (non supporté)",
                 defaultMic: "Microphone par défaut",
                 selectMicTitle: "Sélectionner le microphone",
                 micLevel: "Niveau Micro",
@@ -1953,8 +2052,56 @@
             applyLanguage();
         }
 
+        // ==========================================
+        // UNSUPPORTED DEVICE GATE
+        // The studio needs a precise pointer (waveform editing, camera framing)
+        // and a wide screen (slide + prompter side by side). On a phone or tablet
+        // the layout simply does not work, so say so instead of shipping a broken
+        // UI. A narrow window on a real desktop can dismiss the notice.
+        // ==========================================
+        let unsupportedGateDismissed = sessionStorage.getItem('slidepunch_gate_dismissed') === '1';
+
+        function isUnsupportedDevice() {
+            // Touch-primary device with no real pointer: a phone or a tablet.
+            const touchOnly = window.matchMedia('(pointer: coarse)').matches
+                           && window.matchMedia('(hover: none)').matches;
+            // Or a viewport too narrow for the slide + prompter layout. Judged on
+            // the window only (never screen.width, which reports the monitor and
+            // would wrongly clear a small window on a large display).
+            const tooNarrow = window.innerWidth < 900;
+            return touchOnly || tooNarrow;
+        }
+
+        function refreshUnsupportedGate() {
+            const gate = document.getElementById('unsupportedGate');
+            if (!gate) return;
+            const titleEl = document.getElementById('ugTitle');
+            const bodyEl = document.getElementById('ugBody');
+            const actionEl = document.getElementById('ugAction');
+            const anywayEl = document.getElementById('ugAnyway');
+            if (titleEl) titleEl.textContent = t('unsupportedTitle');
+            if (bodyEl) bodyEl.textContent = t('unsupportedBody');
+            if (actionEl) actionEl.textContent = t('unsupportedAction');
+            if (anywayEl) anywayEl.textContent = t('unsupportedAnyway');
+            const show = isUnsupportedDevice() && !unsupportedGateDismissed;
+            gate.classList.toggle('visible', show);
+            document.body.style.overflow = show ? 'hidden' : '';
+            // The page fades in only once init() adds .ready. The notice must not
+            // wait for that: on a phone, init() can stall or throw on a refused
+            // microphone permission, which would leave a blank page instead of
+            // an explanation.
+            if (show) document.body.classList.add('ready');
+        }
+
+        function dismissUnsupportedGate() {
+            unsupportedGateDismissed = true;
+            try { sessionStorage.setItem('slidepunch_gate_dismissed', '1'); } catch (e) {}
+            refreshUnsupportedGate();
+        }
+
         function applyLanguage() {
             document.documentElement.lang = currentLang;
+            refreshUnsupportedGate();
             document.getElementById('langFlag').textContent = currentLang === 'en' ? '🇫🇷' : '🇬🇧';
             document.getElementById('langText').textContent = currentLang === 'en' ? 'FR' : 'EN';
             
@@ -2094,6 +2241,8 @@
 
         async function init() {
             window.addEventListener('resize', resizeCanvas);
+            window.addEventListener('resize', refreshUnsupportedGate);
+            window.addEventListener('orientationchange', refreshUnsupportedGate);
             setupWaveformMouseEvents();
             setupLandingDragAndDrop();
             setupWebcamDragAndResize();
@@ -2385,14 +2534,10 @@
             textarea.value = slide.script || '';
 
             // Ensure webcam overlay displays unified project layout
-            const overlay = document.getElementById('webcamOverlay');
-            if (slide.hasVideo || (slide.videoTimeline && slide.videoTimeline.length > 0) || webcamActive) {
-                overlay.style.display = 'flex';
+            if (updateWebcamOverlayVisibility()) {
                 updateWebcamOverlayDOM();
                 setupWebcamDragAndResize();
                 initMediaPipeSegmentation();
-            } else {
-                overlay.style.display = 'none';
             }
 
             playheadPosition = 0.0;
@@ -2736,29 +2881,38 @@
 
         async function enableWebcam() {
             const btn = document.getElementById('btnToggleWebcam');
-            const overlay = document.getElementById('webcamOverlay');
-            const camSelect = document.getElementById('cameraSelect');
+
+            // Acquire the camera FIRST, and only reveal the overlay once a stream
+            // is actually running. Showing it up-front meant that a pending or
+            // refused permission prompt left the circle and toolbar on screen
+            // with no camera behind them.
+            webcamActive = true;
+            btn.classList.add('pending');
+            try {
+                await startWebcamStream();
+            } finally {
+                btn.classList.remove('pending');
+            }
+
+            if (!webcamStream) {
+                // startWebcamStream already reported the failure and called
+                // disableWebcam(); nothing to show.
+                return;
+            }
 
             btn.classList.add('active');
-            overlay.style.display = 'flex';
-            if (camSelect) camSelect.style.display = 'inline-block';
-            webcamActive = true;
-
+            updateWebcamOverlayVisibility();
             updateWebcamOverlayDOM();
-            await startWebcamStream();
             setupWebcamDragAndResize();
         }
 
         function disableWebcam(e) {
             if (e) e.stopPropagation();
             const btn = document.getElementById('btnToggleWebcam');
-            const overlay = document.getElementById('webcamOverlay');
-            const camSelect = document.getElementById('cameraSelect');
             const videoEl = document.getElementById('webcamVideo');
 
             btn.classList.remove('active');
-            overlay.style.display = 'none';
-            if (camSelect) camSelect.style.display = 'none';
+            btn.classList.remove('pending');
             webcamActive = false;
 
             if (webcamStream) {
@@ -2768,6 +2922,9 @@
             if (videoEl) {
                 videoEl.srcObject = null;
             }
+            // Recompute rather than force-hide: the slide may still hold recorded
+            // footage that should stay visible for playback.
+            updateWebcamOverlayVisibility();
         }
 
         async function startWebcamStream() {
@@ -2889,7 +3046,7 @@
 
         function renderWebcamPlaybackFrame(targetTime) {
             const slide = slides[currentIndex];
-            if (!slide || !slide.videoTimeline || slide.videoTimeline.length === 0) {
+            if (!slideHasCamera(slide)) {
                 return false;
             }
 
@@ -2922,7 +3079,7 @@
 
         async function processWebcamFrameLoop() {
             const slide = slides[currentIndex];
-            const hasSlideVideo = slide && slide.videoTimeline && slide.videoTimeline.length > 0;
+            const hasSlideVideo = slideHasCamera(slide);
 
             if (!webcamActive && !(isPlaying && hasSlideVideo)) {
                 return;
@@ -2988,7 +3145,7 @@
 
         function onSelfieSegmentationResults(results) {
             const slide = slides[currentIndex];
-            const hasSlideVideo = slide && slide.videoTimeline && slide.videoTimeline.length > 0;
+            const hasSlideVideo = slideHasCamera(slide);
             if (!webcamActive && !(isPlaying && hasSlideVideo)) return;
 
             const displayCanvas = document.getElementById('webcamDisplayCanvas');
@@ -3216,6 +3373,33 @@
                     }
                 }
             } catch(e) {}
+        }
+
+        // True only if the slide actually holds filmed footage. A timeline made
+        // only of gaps (takeId null) means the camera was removed, so it must not
+        // bring the overlay back.
+        function slideHasCamera(slide) {
+            if (!slide) return false;
+            if (slide.videoTimeline && slide.videoTimeline.length > 0) {
+                return slide.videoTimeline.some(c => !!c.takeId);
+            }
+            return !!slide.hasVideo;
+        }
+
+        // Single source of truth for whether the camera overlay is on screen.
+        // It shows only when there is something real to display: a LIVE camera
+        // stream, or recorded footage on this slide. Showing it merely because
+        // the camera was requested left the circle and its whole toolbar
+        // floating over the slide with no picture behind them.
+        function updateWebcamOverlayVisibility() {
+            const overlay = document.getElementById('webcamOverlay');
+            if (!overlay) return false;
+            const live = webcamActive && !!webcamStream;
+            const show = live || slideHasCamera(slides[currentIndex]);
+            overlay.style.display = show ? 'flex' : 'none';
+            const camSelect = document.getElementById('cameraSelect');
+            if (camSelect) camSelect.style.display = live ? 'inline-block' : 'none';
+            return show;
         }
 
         function updateWebcamOverlayDOM() {
@@ -4148,14 +4332,10 @@
             isPlaying = true;
             document.getElementById('btnPlayPause').textContent = '⏸';
 
-            // If slide has recorded video, activate overlay & video playback loop
-            const curSlide = slides[currentIndex];
-            if (curSlide && (curSlide.hasVideo || (curSlide.videoTimeline && curSlide.videoTimeline.length > 0))) {
-                const overlay = document.getElementById('webcamOverlay');
-                if (overlay) {
-                    overlay.style.display = 'flex';
-                    updateWebcamOverlayDOM();
-                }
+            // If slide has recorded footage, activate overlay & video playback loop
+            if (slideHasCamera(slides[currentIndex])) {
+                updateWebcamOverlayVisibility();
+                updateWebcamOverlayDOM();
                 initMediaPipeSegmentation();
                 requestAnimationFrame(processWebcamFrameLoop);
             }
@@ -4225,7 +4405,7 @@
 
             // Delete / Clear Recording button visibility in dock-right
             const curSlide = slides[currentIndex];
-            const hasSlideRec = currentSamples.length > 0 || (curSlide && (curSlide.hasAudio || curSlide.hasVideo || (curSlide.videoTimeline && curSlide.videoTimeline.length > 0)));
+            const hasSlideRec = currentSamples.length > 0 || (curSlide && (curSlide.hasAudio || slideHasCamera(curSlide)));
             if (btnDeleteAll) {
                 btnDeleteAll.style.display = (hasSlideRec && recordingState !== 'recording') ? 'inline-flex' : 'none';
             }
@@ -4810,7 +4990,23 @@
             }
         });
 
-        init();
+        // Show the unsupported-device notice before init() does any awaiting, so a
+        // phone user sees the explanation immediately rather than a blank page.
+        refreshUnsupportedGate();
+
+        // Never leave the page invisible: body only fades in on .ready, so if
+        // init() throws (blocked media permissions, unavailable IndexedDB) the
+        // user must still get a usable page rather than a white screen.
+        // Safety net: init() awaits device enumeration, which can stay pending
+        // indefinitely if the user neither accepts nor refuses the permission
+        // prompt. Reveal the page anyway rather than hold a blank screen.
+        const revealTimer = setTimeout(() => document.body.classList.add('ready'), 4000);
+        init().catch(err => {
+            console.error("Initialisation error:", err);
+        }).finally(() => {
+            clearTimeout(revealTimer);
+            document.body.classList.add('ready');
+        });
     </script>
 </body>
 </html>
