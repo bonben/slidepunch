@@ -2882,13 +2882,9 @@
                 }
                 acc += clip.duration;
             }
-            const last = timeline[timeline.length - 1];
-            return {
-                takeId: last.takeId,
-                srcTime: last.srcEnd,
-                clipStart: Math.max(0, acc - last.duration),
-                clipEnd: acc
-            };
+            // Past the end of the camera timeline (audio runs longer than any
+            // filmed clip): no camera here — let the base slide show.
+            return null;
         }
 
         function renderWebcamPlaybackFrame(targetTime) {
@@ -2898,7 +2894,8 @@
             }
 
             const clipInfo = getVideoClipAtTime(slide.videoTimeline, targetTime);
-            if (!clipInfo) return false;
+            // No clip, or a no-camera gap (takeId null) → show the bare slide.
+            if (!clipInfo || !clipInfo.takeId || clipInfo.takeId === 'gap') return false;
 
             const playbackVid = document.getElementById('webcamPlaybackVideo');
             if (!playbackVid) return false;
@@ -3629,11 +3626,28 @@
             const takeId = 'take_' + Date.now();
             const slide = slides[currentIndex];
 
+            // Keep the video timeline aligned with the (edited) audio timeline.
+            // The punched-in region [punchInTimeSec, punchInTimeSec+newTakeDur) is
+            // replaced in BOTH tracks. If a camera was recorded, splice in the cam
+            // take; if not, splice in a GAP (takeId:null) so the slide shows the
+            // base image there and the surrounding cam clips keep their positions.
+            // Skipping this on an audio-only punch-in is what made the camera
+            // "spread" onto regions that were never filmed.
+            const hadTimeline = slide.videoTimeline && slide.videoTimeline.length > 0;
             if (recordedCamBlob) {
-                if (!slide.videoTimeline || slide.videoTimeline.length === 0 || punchInStartSample === 0) {
+                if (!hadTimeline || punchInStartSample === 0) {
                     slide.videoTimeline = [{ takeId: takeId, srcStart: 0, srcEnd: newTakeDur, duration: newTakeDur }];
                 } else {
                     slide.videoTimeline = spliceVideoTimeline(slide.videoTimeline, punchInTimeSec, newTakeDur, takeId);
+                }
+            } else if (hadTimeline) {
+                // Audio-only (re-)recording over a slide that already has camera.
+                if (punchInStartSample === 0) {
+                    // Full re-record with no camera: drop the camera entirely.
+                    slide.videoTimeline = [];
+                } else {
+                    // Replace only the punched-in span with a no-camera gap.
+                    slide.videoTimeline = spliceVideoTimeline(slide.videoTimeline, punchInTimeSec, newTakeDur, null);
                 }
             }
 
