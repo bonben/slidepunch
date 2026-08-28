@@ -1,6 +1,6 @@
 # 🎙️ SlidePunch 🥊
 
-> **Frugal, no-`pip`-install slide-by-slide presentation recording studio with live waveform, punch-in audio repair, synchronized teleprompter, and 1-click 1080p MP4 video rendering.**
+> **Frugal, zero-dependency slide-by-slide presentation recording studio with live waveform, punch-in audio repair, synchronized teleprompter, and 1-click 1080p MP4 video rendering.**
 
 <p align="center">
   <a href="https://bonben.github.io/slidepunch/" target="_blank">
@@ -35,7 +35,7 @@
 - ✏️ **Synchronized Editable Teleprompter:** Live speech notes side-by-side with your slides, automatically saved to Markdown (`notes.md`).
 - 🎬 **1-Click 1080p Video Generation:** Stitches your slide images and audio into a professional 1080p MP4 video with high-quality audio and zero sync drift.
 - 🌐 **Bilingual Interface (EN / FR):** Instant one-click toggle between English and French.
-- 🪶 **Frugal & Standalone:** Pure Python standard-library backend (`http.server`) + vanilla-JavaScript frontend. No heavy frameworks, no `npm install`, no `pip` packages. The browser frontend does load a few JS libraries (PDF.js, JSZip, MediaPipe) from a CDN, so first load needs an internet connection.
+- 🪶 **Frugal & Standalone:** Pure Python standard library backend (`http.server`) + Vanilla JavaScript frontend. No heavy frameworks, no `npm install`, no external `pip` dependencies.
 
 ---
 

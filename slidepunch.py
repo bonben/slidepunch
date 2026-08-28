@@ -19,7 +19,6 @@ import webbrowser
 import urllib.parse
 from pathlib import Path
 from http.server import HTTPServer, SimpleHTTPRequestHandler
-from socketserver import ThreadingMixIn
 
 PORT = 8080
 BASE_DIR = Path(__file__).resolve().parent
@@ -29,54 +28,6 @@ WEB_DIR = BASE_DIR / "web"
 def ensure_base_dirs():
     PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
     WEB_DIR.mkdir(parents=True, exist_ok=True)
-
-def probe_duration(media_path):
-    """Return the duration of a media file in seconds, or 0.0 if it can't be read.
-
-    A failed probe used to be swallowed silently, which surfaced later as wrong
-    slide timings and zero-length camera windows with no clue as to why.
-    """
-    try:
-        res = subprocess.run([
-            "ffprobe", "-v", "error", "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1", str(media_path)
-        ], capture_output=True, text=True, check=True)
-        return float(res.stdout.strip())
-    except Exception as e:
-        print(f"[SlidePunch] Could not read duration of {media_path}: {e}", file=sys.stderr)
-        return 0.0
-
-def safe_project_dir(project_id, create=False):
-    """Resolve a project directory, refusing anything that escapes PROJECTS_DIR.
-
-    Returns the resolved Path, or None if project_id is missing/invalid or the
-    resulting path would fall outside PROJECTS_DIR (path-traversal guard).
-    """
-    if not project_id or not re.fullmatch(r'[A-Za-z0-9_-]+', project_id):
-        return None
-    proj_dir = (PROJECTS_DIR / project_id).resolve()
-    try:
-        proj_dir.relative_to(PROJECTS_DIR.resolve())
-    except ValueError:
-        return None
-    if create:
-        proj_dir.mkdir(parents=True, exist_ok=True)
-    return proj_dir
-
-def safe_child(base_dir, filename):
-    """Resolve `filename` under `base_dir`, refusing any traversal.
-
-    Rejects absolute paths, `..` segments, and subdirectories: callers only
-    ever want a plain file living directly in base_dir.
-    """
-    if not filename or '/' in filename or '\\' in filename or filename in ('.', '..'):
-        return None
-    candidate = (base_dir / filename).resolve()
-    try:
-        candidate.relative_to(base_dir.resolve())
-    except ValueError:
-        return None
-    return candidate
 
 def get_all_projects():
     ensure_base_dirs()
@@ -98,7 +49,14 @@ def get_all_projects():
             # Calculate total duration
             total_duration = 0.0
             for wav in recordings:
-                total_duration += probe_duration(wav)
+                try:
+                    res = subprocess.run([
+                        "ffprobe", "-v", "error", "-show_entries", "format=duration",
+                        "-of", "default=noprint_wrappers=1:nokey=1", str(wav)
+                    ], capture_output=True, text=True, check=True)
+                    total_duration += float(res.stdout.strip())
+                except Exception:
+                    pass
                     
             projects.append({
                 "id": p.name,
@@ -110,26 +68,9 @@ def get_all_projects():
             })
     return projects
 
-def find_slide_image(proj_dir, idx):
-    slide_dir = proj_dir / "slide_images"
-    if not slide_dir.exists():
-        return None
-    candidates = [
-        slide_dir / f"slide-{idx:02d}.png",
-        slide_dir / f"slide-{idx}.png",
-        slide_dir / f"slide-{idx:03d}.png",
-        slide_dir / f"slide_{idx:02d}.png",
-        slide_dir / f"slide_{idx}.png",
-        slide_dir / f"slide_{idx:03d}.png",
-    ]
-    for c in candidates:
-        if c.exists():
-            return c
-    return None
-
 def parse_project_slides(project_id):
-    proj_dir = safe_project_dir(project_id)
-    if not proj_dir or not proj_dir.exists():
+    proj_dir = PROJECTS_DIR / project_id
+    if not proj_dir.exists():
         return []
     
     notes_file = proj_dir / "notes.md"
@@ -182,31 +123,20 @@ def parse_project_slides(project_id):
         timing_info = timings.get(idx, {"topic": custom_topic, "target": "1:00", "cumulative": ""})
         clean_script = script_by_num.get(idx, "")
         
-        slide_img = find_slide_image(proj_dir, idx)
-        img_name = slide_img.name if slide_img else f"slide-{idx:02d}.png"
+        img_name = f"slide-{idx:02d}.png"
         wav_name = f"slide_{idx:02d}.wav"
         has_audio = (recordings_dir / wav_name).exists()
         
-        audio_duration = probe_duration(recordings_dir / wav_name) if has_audio else 0.0
-
-        timeline_file = recordings_dir / f"slide_{idx:02d}_timeline.json"
-        video_timeline = []
-        webcam_layout = None
-        if timeline_file.exists():
+        audio_duration = 0.0
+        if has_audio:
             try:
-                t_data = json.loads(timeline_file.read_text(encoding="utf-8"))
-                video_timeline = t_data.get("timeline", [])
-                webcam_layout = t_data.get("layout", None)
+                res = subprocess.run([
+                    "ffprobe", "-v", "error", "-show_entries", "format=duration",
+                    "-of", "default=noprint_wrappers=1:nokey=1", str(recordings_dir / wav_name)
+                ], capture_output=True, text=True, check=True)
+                audio_duration = float(res.stdout.strip())
             except Exception:
                 pass
-        elif (recordings_dir / f"slide_{idx:02d}_cam.webm").exists():
-            layout_f = recordings_dir / f"slide_{idx:02d}_layout.json"
-            if layout_f.exists():
-                try:
-                    webcam_layout = json.loads(layout_f.read_text(encoding="utf-8"))
-                except Exception:
-                    pass
-            video_timeline = [{"takeId": "cam", "srcStart": 0, "srcEnd": audio_duration, "duration": audio_duration}]
 
         slides.append({
             "number": idx,
@@ -218,32 +148,24 @@ def parse_project_slides(project_id):
             "image": f"/api/slide_image?project={project_id}&file={img_name}",
             "hasAudio": has_audio,
             "audioUrl": f"/api/audio?project={project_id}&file={wav_name}" if has_audio else None,
-            "audioDuration": audio_duration,
-            # A timeline made only of gaps (takeId null) means "no camera": it must
-            # not light up the camera badge or trigger playback of missing takes.
-            "hasVideo": any(c.get("takeId") for c in video_timeline),
-            "videoTimeline": video_timeline,
-            "webcamLayout": webcam_layout
+            "audioDuration": audio_duration
         })
     
     return slides
 
 def update_slide_script_in_project(project_id, slide_num, new_text):
-    proj_dir = safe_project_dir(project_id, create=True)
-    if not proj_dir:
-        return False
+    proj_dir = PROJECTS_DIR / project_id
     notes_file = proj_dir / "notes.md"
     if not notes_file.exists():
         initial_content = f"# Speaker Notes - {project_id}\n\n"
         notes_file.write_text(initial_content, encoding="utf-8")
     
     content = notes_file.read_text(encoding="utf-8")
-    
-    pattern = rf'(###\s+Slide\s+{slide_num}(?::[^\n]*)?\n)(.*?)(?=(?:###\s+Slide|\Z))'
-    match = re.search(pattern, content, flags=re.DOTALL)
+    pattern = rf'(###\s+Slide\s+{slide_num}(?::[^\n]*)?\n)(.*?)(?=\n---\n|\Z)'
+    match = re.search(pattern, content, re.DOTALL)
     
     cleaned_lines = []
-    for line in new_text.split('\n'):
+    for line in new_text.strip().split('\n'):
         l = line.strip()
         while l.startswith('>'):
             l = l[1:].strip()
@@ -299,9 +221,7 @@ def create_project_from_pdf(project_name, pdf_bytes, title=None):
     return safe_id
 
 def render_project_video(project_id):
-    proj_dir = safe_project_dir(project_id)
-    if not proj_dir:
-        return False, "Projet invalide."
+    proj_dir = PROJECTS_DIR / project_id
     slides = parse_project_slides(project_id)
     if not slides:
         return False, "Aucune diapositive trouvée pour ce projet."
@@ -310,177 +230,31 @@ def render_project_video(project_id):
     temp_dir.mkdir(parents=True, exist_ok=True)
     segment_files = []
     
-    # Read unified project camera layout
-    proj_layout_file = proj_dir / "project_layout.json"
-    global_layout = {
-        "xPct": 0.70,
-        "yPct": 0.65,
-        "sizePct": 0.28,
-        "shape": "cutout",
-        "bgMode": "cutout"
-    }
-    if proj_layout_file.exists():
-        try:
-            global_layout.update(json.loads(proj_layout_file.read_text(encoding="utf-8")))
-        except Exception:
-            pass
-
     for s in slides:
         num = s["number"]
-        img = find_slide_image(proj_dir, num)
+        img = proj_dir / "slide_images" / f"slide-{num:02d}.png"
         wav = proj_dir / "recordings" / f"slide_{num:02d}.wav"
         seg_mp4 = temp_dir / f"seg_{num:02d}.mp4"
         
-        if not img or not img.exists():
+        if not img.exists():
             return False, f"Image manquante: slide-{num:02d}.png"
         
         if not wav.exists():
             return False, f"Audio manquant pour la Slide {num}. Veuillez l'enregistrer d'abord."
         
-        # Check timeline
-        timeline_file = proj_dir / "recordings" / f"slide_{num:02d}_timeline.json"
-        layout_file = proj_dir / "recordings" / f"slide_{num:02d}_layout.json"
-        
-        timeline_clips = []
-        layout = dict(global_layout)
-        
-        if timeline_file.exists():
-            try:
-                t_data = json.loads(timeline_file.read_text(encoding="utf-8"))
-                timeline_clips = t_data.get("timeline", [])
-            except Exception:
-                pass
-        
-        if not timeline_clips:
-            # Legacy projects recorded before timelines existed: assume the take
-            # covers the slide from the start. Bound it by the real audio length
-            # rather than a 9999 sentinel so the clip can never be positioned or
-            # stretched past the audio it belongs to.
-            # If the audio duration could not be probed, fall back to a window long
-            # enough to mean "until the take runs out" (overlay uses eof_action=pass,
-            # so the camera still stops at its own end) rather than 0, which would
-            # silently drop the camera entirely.
-            legacy_dur = float(s.get("audioDuration") or 0.0) or 86400.0
-            takes = sorted((proj_dir / "recordings").glob(f"slide_{num:02d}_take_*.webm"), key=lambda p: p.stat().st_mtime)
-            if takes:
-                t_id = takes[-1].stem.replace(f"slide_{num:02d}_", "")
-                timeline_clips = [{"takeId": t_id, "srcStart": 0, "srcEnd": legacy_dur, "duration": legacy_dur}]
-            elif (proj_dir / "recordings" / f"slide_{num:02d}_cam.webm").exists():
-                timeline_clips = [{"takeId": "cam", "srcStart": 0, "srcEnd": legacy_dur, "duration": legacy_dur}]
-                
-        # Calculate pixel dimensions (16:9 1080p canvas)
-        w_px = max(120, min(1920, int(layout.get("sizePct", 0.28) * 1920)))
-        h_px = w_px # 1:1 aspect ratio
-        x_px = max(0, min(1920 - w_px, int(layout.get("xPct", 0.70) * 1920)))
-        y_px = max(0, min(1080 - h_px, int(layout.get("yPct", 0.65) * 1080)))
-
-        # Walk the timeline in OUTPUT order, tracking each clip's position on the
-        # slide's audio timeline. Clips with no take file (or an explicit gap/null
-        # takeId) are "no-camera" gaps: we simply advance the clock and let the base
-        # slide show through. Real camera clips are overlaid ONLY during their own
-        # [out_start, out_end) window, so the camera can never spread into a region
-        # that was never filmed.
-        valid_clips = []  # (take_file, src_start, src_end, out_start, out_end)
-        out_cursor = 0.0
-        for c in timeline_clips:
-            src_start = float(c.get("srcStart", 0.0))
-            src_end = float(c.get("srcEnd", c.get("duration", 0.0)) or 0.0)
-            clip_dur = float(c.get("duration", (src_end - src_start))) or (src_end - src_start)
-            take_id = c.get("takeId")
-            out_start = out_cursor
-            out_cursor += max(0.0, clip_dur)
-            out_end = out_cursor
-            if not take_id or take_id in ("gap", "none", "null"):
-                continue  # no-camera gap
-            take_file = proj_dir / "recordings" / f"slide_{num:02d}_{take_id}.webm"
-            if take_file.exists():
-                valid_clips.append((take_file, src_start, src_end, out_start, out_end))
-
-        if valid_clips:
-            try:
-                cmd = ["ffmpeg", "-y", "-loop", "1", "-framerate", "30", "-i", str(img)]
-                filter_parts = [
-                    "[0:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:white,format=yuv420p[base]"
-                ]
-                input_idx = 1
-                cam_labels = []
-                for take_file, s_start, s_end, o_start, o_end in valid_clips:
-                    cmd.extend(["-i", str(take_file)])
-                    # Trim the source region, then shift its PTS so it plays at the
-                    # correct OUTPUT time on the slide timeline.
-                    trim_filter = f"[{input_idx}:v]trim=start={s_start:.3f}"
-                    if s_end and s_end > s_start:
-                        trim_filter += f":end={s_end:.3f}"
-                    trim_filter += f",setpts=PTS-STARTPTS+{o_start:.3f}/TB"
-                    trim_filter += f",scale={w_px}:{h_px}:force_original_aspect_ratio=increase,crop={w_px}:{h_px}"
-                    if layout.get("shape") == "circle":
-                        trim_filter += ",format=yuva420p,geq=r='r(X,Y)':a='if(lte(hypot(X-W/2,Y-H/2),min(W,H)/2),alpha(X,Y),0)'"
-                    trim_filter += f",format=yuva420p[cam_{input_idx}]"
-                    filter_parts.append(trim_filter)
-                    cam_labels.append((f"[cam_{input_idx}]", o_start, o_end))
-                    input_idx += 1
-
-                cmd.extend(["-i", str(wav)])
-                wav_input_idx = input_idx
-
-                # Chain one overlay per clip, each gated to its own output window so a
-                # finished clip never freezes onto a later gap.
-                cur_base = "[base]"
-                for i, (cam_label, o_start, o_end) in enumerate(cam_labels):
-                    out_label = "[outv]" if i == len(cam_labels) - 1 else f"[ov_{i}]"
-                    filter_parts.append(
-                        f"{cur_base}{cam_label}overlay={x_px}:{y_px}:"
-                        f"eof_action=pass:enable='between(t,{o_start:.3f},{o_end:.3f})'{out_label}"
-                    )
-                    cur_base = out_label
-
-                cmd.extend([
-                    "-filter_complex", ";".join(filter_parts),
-                    "-map", "[outv]",
-                    "-map", f"{wav_input_idx}:a",
-                    "-c:v", "libx264", "-tune", "stillimage", "-preset", "fast",
-                    "-c:a", "aac", "-b:a", "192k",
-                    "-shortest",
-                    str(seg_mp4)
-                ])
-
-                res = subprocess.run(cmd, capture_output=True)
-                if res.returncode != 0:
-                    raise RuntimeError(res.stderr.decode('utf-8'))
-            except Exception as e:
-                # Fallback to still image. Log it: silently dropping the camera
-                # here is indistinguishable, from the user's side, from the
-                # camera never having been recorded.
-                print(f"[SlidePunch] Slide {num}: camera overlay failed, "
-                      f"falling back to a still slide. Reason: {e}", file=sys.stderr)
-                cmd = [
-                    "ffmpeg", "-y",
-                    "-loop", "1", "-framerate", "30", "-i", str(img),
-                    "-i", str(wav),
-                    "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:white,format=yuv420p",
-                    "-c:v", "libx264", "-tune", "stillimage", "-preset", "fast",
-                    "-c:a", "aac", "-b:a", "192k",
-                    "-shortest",
-                    str(seg_mp4)
-                ]
-                res = subprocess.run(cmd, capture_output=True)
-                if res.returncode != 0:
-                    return False, f"Erreur ffmpeg segment {num}: {res.stderr.decode('utf-8')}"
-        else:
-            cmd = [
-                "ffmpeg", "-y",
-                "-loop", "1", "-framerate", "30", "-i", str(img),
-                "-i", str(wav),
-                "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:white,format=yuv420p",
-                "-c:v", "libx264", "-tune", "stillimage", "-preset", "fast",
-                "-c:a", "aac", "-b:a", "192k",
-                "-shortest",
-                str(seg_mp4)
-            ]
-            res = subprocess.run(cmd, capture_output=True)
-            if res.returncode != 0:
-                return False, f"Erreur ffmpeg segment {num}: {res.stderr.decode('utf-8')}"
-                
+        cmd = [
+            "ffmpeg", "-y",
+            "-loop", "1", "-framerate", "30", "-i", str(img),
+            "-i", str(wav),
+            "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:white,format=yuv420p",
+            "-c:v", "libx264", "-tune", "stillimage", "-preset", "fast",
+            "-c:a", "aac", "-b:a", "192k",
+            "-shortest",
+            str(seg_mp4)
+        ]
+        res = subprocess.run(cmd, capture_output=True)
+        if res.returncode != 0:
+            return False, f"Erreur ffmpeg segment {num}: {res.stderr.decode('utf-8')}"
         segment_files.append(seg_mp4)
         
     concat_txt = temp_dir / "concat_list.txt"
@@ -489,16 +263,10 @@ def render_project_video(project_id):
             f.write(f"file '{seg.resolve()}'\n")
             
     output_video = proj_dir / "presentation_complete.mp4"
-    # Re-encode on concat rather than stream-copy: the segments are encoded
-    # independently, so their timebases/SPS can differ enough that a plain
-    # "-c copy" mux produces A/V drift or a broken output. Re-encoding is
-    # slower but guarantees the "zero sync drift" the tool promises.
     concat_cmd = [
         "ffmpeg", "-y",
         "-f", "concat", "-safe", "0", "-i", str(concat_txt),
-        "-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-b:a", "192k",
-        "-movflags", "+faststart",
+        "-c", "copy",
         str(output_video)
     ]
     res = subprocess.run(concat_cmd, capture_output=True)
@@ -512,12 +280,6 @@ def render_project_video(project_id):
     if temp_dir.exists(): temp_dir.rmdir()
     
     return True, f"Vidéo générée avec succès : {output_video.name}"
-
-class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
-    """Handle each request in its own thread so a long ffmpeg render does not
-    block every other request (project listing, slide loads, audio seeks)."""
-    daemon_threads = True
-
 
 class SlidePunchHandler(SimpleHTTPRequestHandler):
     def do_GET(self):
@@ -547,18 +309,8 @@ class SlidePunchHandler(SimpleHTTPRequestHandler):
         elif path == "/api/slide_image":
             proj_id = params.get("project", ["hdr_demo"])[0]
             filename = params.get("file", ["slide-01.png"])[0]
-            proj_dir = safe_project_dir(proj_id)
-            if not proj_dir:
-                self.send_error(400, "Invalid project")
-                return
-            file_path = safe_child(proj_dir / "slide_images", filename)
-            if not file_path or not file_path.exists():
-                m = re.search(r'(\d+)', filename)
-                if m:
-                    alt = find_slide_image(proj_dir, int(m.group(1)))
-                    if alt and alt.exists():
-                        file_path = alt
-            if file_path and file_path.exists():
+            file_path = PROJECTS_DIR / proj_id / "slide_images" / filename
+            if file_path.exists():
                 self.send_response(200)
                 self.send_header("Content-Type", "image/png")
                 self.end_headers()
@@ -572,21 +324,8 @@ class SlidePunchHandler(SimpleHTTPRequestHandler):
         elif path == "/api/audio":
             proj_id = params.get("project", ["hdr_demo"])[0]
             filename = params.get("file", ["slide_01.wav"])[0]
-            proj_dir = safe_project_dir(proj_id)
-            if not proj_dir:
-                self.send_error(400, "Invalid project")
-                return
-            file_path = safe_child(proj_dir / "recordings", filename)
-            if not file_path or not file_path.exists():
-                m = re.search(r'(\d+)', filename)
-                if m:
-                    idx = int(m.group(1))
-                    for alt_name in [f"slide_{idx:02d}.wav", f"slide_{idx}.wav", f"slide_{idx:03d}.wav"]:
-                        alt = proj_dir / "recordings" / alt_name
-                        if alt.exists():
-                            file_path = alt
-                            break
-            if not file_path or not file_path.exists():
+            file_path = PROJECTS_DIR / proj_id / "recordings" / filename
+            if not file_path.exists():
                 self.send_error(404, "Audio file not found")
                 return
 
@@ -624,70 +363,9 @@ class SlidePunchHandler(SimpleHTTPRequestHandler):
                 self.wfile.write(f.read())
             return
 
-        elif path == "/api/slide_video":
-            proj_id = params.get("project", [""])[0]
-            file_name = params.get("file", [""])[0]
-            if not proj_id or not file_name:
-                self.send_error(400, "Missing project or file parameter")
-                return
-
-            proj_dir = safe_project_dir(proj_id)
-            if not proj_dir:
-                self.send_error(400, "Invalid project")
-                return
-            file_path = safe_child(proj_dir / "recordings", file_name)
-            if not file_path or not file_path.exists():
-                self.send_error(404, "Video file not found")
-                return
-
-            file_size = file_path.stat().st_size
-            range_header = self.headers.get("Range")
-
-            if range_header:
-                try:
-                    ranges = range_header.replace("bytes=", "").split("-")
-                    start = int(ranges[0]) if ranges[0] else 0
-                    end = int(ranges[1]) if len(ranges) > 1 and ranges[1] else file_size - 1
-                    end = min(end, file_size - 1)
-                    length = end - start + 1
-
-                    self.send_response(206)
-                    self.send_header("Content-Type", "video/webm")
-                    self.send_header("Accept-Ranges", "bytes")
-                    self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
-                    self.send_header("Content-Length", str(length))
-                    self.send_header("Cache-Control", "no-cache")
-                    self.end_headers()
-
-                    with open(file_path, "rb") as f:
-                        f.seek(start)
-                        self.wfile.write(f.read(length))
-                    return
-                except (BrokenPipeError, ConnectionResetError):
-                    return
-                except Exception as e:
-                    print(f"Error serving video range: {e}")
-
-            self.send_response(200)
-            self.send_header("Content-Type", "video/webm")
-            self.send_header("Accept-Ranges", "bytes")
-            self.send_header("Content-Length", str(file_size))
-            self.send_header("Cache-Control", "no-cache")
-            self.end_headers()
-            try:
-                with open(file_path, "rb") as f:
-                    self.wfile.write(f.read())
-            except (BrokenPipeError, ConnectionResetError):
-                pass
-            return
-
         elif path == "/api/video":
             proj_id = params.get("project", ["hdr_demo"])[0]
-            proj_dir = safe_project_dir(proj_id)
-            if not proj_dir:
-                self.send_error(400, "Invalid project")
-                return
-            video_file = proj_dir / "presentation_complete.mp4"
+            video_file = PROJECTS_DIR / proj_id / "presentation_complete.mp4"
             if video_file.exists():
                 self.send_response(200)
                 self.send_header("Content-Type", "video/mp4")
@@ -698,29 +376,6 @@ class SlidePunchHandler(SimpleHTTPRequestHandler):
             else:
                 self.send_error(404, "Video not yet generated")
                 return
-
-        elif path == "/api/project_layout":
-            proj_id = params.get("project", [""])[0]
-            proj_dir = safe_project_dir(proj_id)
-            if not proj_dir:
-                self.send_error(400, "Invalid project")
-                return
-            layout_file = proj_dir / "project_layout.json"
-            if layout_file.exists():
-                try:
-                    data = json.loads(layout_file.read_text(encoding="utf-8"))
-                    self.send_response(200)
-                    self.send_header("Content-Type", "application/json")
-                    self.end_headers()
-                    self.wfile.write(json.dumps(data).encode("utf-8"))
-                    return
-                except Exception:
-                    pass
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({}).encode("utf-8"))
-            return
 
         elif path == "/" or path == "/index.html":
             html_file = WEB_DIR / "index.html"
@@ -743,105 +398,24 @@ class SlidePunchHandler(SimpleHTTPRequestHandler):
         if path == "/api/delete_audio":
             proj_id = params.get("project", [""])[0]
             slide_idx = int(params.get("slide", [1])[0])
-            proj_dir = safe_project_dir(proj_id)
-            if not proj_dir:
-                self.send_error(400, "Invalid project")
-                return
-            rec_dir = proj_dir / "recordings"
-            if rec_dir.exists():
-                for f in rec_dir.glob(f"slide_{slide_idx:02d}*"):
-                    try:
-                        f.unlink()
-                    except Exception:
-                        pass
+            wav_file = PROJECTS_DIR / proj_id / "recordings" / f"slide_{slide_idx:02d}.wav"
+            if wav_file.exists():
+                wav_file.unlink()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps({"success": True}).encode("utf-8"))
             return
 
-        elif path == "/api/save_slide_video" or path == "/api/save_slide_video_take":
-            proj_id = params.get("project", [""])[0]
-            slide_idx = int(params.get("slide", [1])[0])
-            take_id = params.get("takeId", ["cam"])[0]
-            x_pct = float(params.get("x", [0.70])[0])
-            y_pct = float(params.get("y", [0.65])[0])
-            w_pct = float(params.get("w", [0.28])[0])
-            shape = params.get("shape", ["cutout"])[0]
-            bg_mode = params.get("bgMode", ["cutout"])[0]
-
-            proj_dir = safe_project_dir(proj_id, create=True)
-            if not proj_dir:
-                self.send_error(400, "Invalid project")
-                return
-            rec_dir = proj_dir / "recordings"
-            rec_dir.mkdir(parents=True, exist_ok=True)
-            
-            take_file = rec_dir / f"slide_{slide_idx:02d}_{take_id}.webm"
-            cam_file = rec_dir / f"slide_{slide_idx:02d}_cam.webm"
-            layout_file = rec_dir / f"slide_{slide_idx:02d}_layout.json"
-            
-            data = self.rfile.read(content_length)
-            with open(take_file, "wb") as f:
-                f.write(data)
-            # Copy to main cam file for backward compatibility
-            with open(cam_file, "wb") as f:
-                f.write(data)
-                
-            layout = {
-                "xPct": x_pct,
-                "yPct": y_pct,
-                "sizePct": w_pct,
-                "shape": shape,
-                "bgMode": bg_mode
-            }
-            layout_file.write_text(json.dumps(layout, indent=2), encoding="utf-8")
-            
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({"success": True, "takeId": take_id}).encode("utf-8"))
-            return
-
-        elif path == "/api/save_slide_timeline":
-            proj_id = params.get("project", [""])[0]
-            slide_idx = int(params.get("slide", [1])[0])
-            post_data = self.rfile.read(content_length)
-
-            proj_dir = safe_project_dir(proj_id, create=True)
-            if not proj_dir:
-                self.send_error(400, "Invalid project")
-                return
-            rec_dir = proj_dir / "recordings"
-            rec_dir.mkdir(parents=True, exist_ok=True)
-
-            timeline_file = rec_dir / f"slide_{slide_idx:02d}_timeline.json"
-            try:
-                timeline_data = json.loads(post_data.decode("utf-8"))
-                timeline_file.write_text(json.dumps(timeline_data, indent=2), encoding="utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                self.wfile.write(json.dumps({"success": True}).encode("utf-8"))
-            except Exception as e:
-                self.send_response(400)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                self.wfile.write(json.dumps({"success": False, "error": str(e)}).encode("utf-8"))
-            return
-
         elif path == "/api/save_audio":
             post_data = self.rfile.read(content_length)
             proj_id = params.get("project", ["hdr_demo"])[0]
             slide_idx = int(params.get("slide", [1])[0])
-
-            proj_dir = safe_project_dir(proj_id, create=True)
-            if not proj_dir:
-                self.send_error(400, "Invalid project")
-                return
+            
+            proj_dir = PROJECTS_DIR / proj_id
             rec_dir = proj_dir / "recordings"
             rec_dir.mkdir(parents=True, exist_ok=True)
-
+            
             temp_input = rec_dir / f"temp_upload_{slide_idx}.dat"
             target_wav = rec_dir / f"slide_{slide_idx:02d}.wav"
             
@@ -855,7 +429,11 @@ class SlidePunchHandler(SimpleHTTPRequestHandler):
                 ], check=True, capture_output=True)
                 if temp_input.exists(): temp_input.unlink()
                 
-                duration = probe_duration(target_wav)
+                res = subprocess.run([
+                    "ffprobe", "-v", "error", "-show_entries", "format=duration",
+                    "-of", "default=noprint_wrappers=1:nokey=1", str(target_wav)
+                ], capture_output=True, text=True, check=True)
+                duration = float(res.stdout.strip())
                 
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
@@ -889,44 +467,6 @@ class SlidePunchHandler(SimpleHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps({"success": success, "slide": slide_idx}).encode("utf-8"))
-            return
-
-        elif path == "/api/save_project_layout":
-            proj_id = params.get("project", [""])[0]
-            post_data = self.rfile.read(content_length)
-            proj_dir = safe_project_dir(proj_id, create=True)
-            if not proj_dir:
-                self.send_error(400, "Invalid project")
-                return
-            layout_file = proj_dir / "project_layout.json"
-            try:
-                layout_data = json.loads(post_data.decode("utf-8"))
-                layout_file.write_text(json.dumps(layout_data, indent=2), encoding="utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                self.wfile.write(json.dumps({"success": True}).encode("utf-8"))
-            except Exception as e:
-                self.send_response(400)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                self.wfile.write(json.dumps({"success": False, "error": str(e)}).encode("utf-8"))
-            return
-
-        elif path == "/api/save_final_video":
-            proj_id = params.get("project", [""])[0]
-            post_data = self.rfile.read(content_length)
-            proj_dir = safe_project_dir(proj_id, create=True)
-            if not proj_dir:
-                self.send_error(400, "Invalid project")
-                return
-            video_file = proj_dir / "presentation_complete.mp4"
-            with open(video_file, "wb") as f:
-                f.write(post_data)
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({"success": True, "videoUrl": f"/api/video?project={proj_id}"}).encode("utf-8"))
             return
 
         elif path == "/api/projects/new":
@@ -971,7 +511,7 @@ class SlidePunchHandler(SimpleHTTPRequestHandler):
 def main():
     ensure_base_dirs()
     server_address = ("", PORT)
-    httpd = ThreadingHTTPServer(server_address, SlidePunchHandler)
+    httpd = HTTPServer(server_address, SlidePunchHandler)
     url = f"http://localhost:{PORT}"
     print("\n" + "="*70)
     print("🎙️  SlidePunch — Studio d'Enregistrement Présentation Slide-par-Slide")
