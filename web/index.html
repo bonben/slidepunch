@@ -13,7 +13,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <!-- MediaPipe Selfie Segmentation for AI Background Removal -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1.1632777915/selfie_segmentation.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1.1675465747/selfie_segmentation.js" crossorigin="anonymous"></script>
 
     <style>
         :root {
@@ -46,6 +46,12 @@
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            opacity: 0;
+            transition: opacity 0.12s ease;
+        }
+
+        body.ready {
+            opacity: 1;
         }
 
         /* Top Header */
@@ -535,20 +541,22 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            padding: 16px;
+            padding: 32px 20px;
             background: #E2E8F0;
             position: relative;
-            overflow: hidden;
+            overflow: visible;
+            z-index: 10;
         }
 
         .slide-img-container {
+            position: relative;
             width: 100%;
             max-width: 880px;
             aspect-ratio: 16/9;
             background: white;
             border-radius: 8px;
             box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
-            overflow: hidden;
+            overflow: visible;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -558,6 +566,7 @@
             width: 100%;
             height: 100%;
             object-fit: contain;
+            border-radius: 8px;
             user-select: none;
             -webkit-user-drag: none;
         }
@@ -620,31 +629,72 @@
             display: block;
         }
 
-        /* Floating Mini Controls on Hover */
-        .webcam-toolbar {
+        /* Floating Mini Controls on Hover with Bridge */
+        .webcam-toolbar-wrap {
             position: absolute;
-            top: 6px;
+            bottom: 100%;
             left: 50%;
-            transform: translateX(-50%) translateY(-6px);
-            background: rgba(15, 23, 42, 0.88);
-            backdrop-filter: blur(8px);
-            border: 1px solid rgba(255, 255, 255, 0.25);
-            border-radius: 999px;
-            padding: 3px 6px;
-            display: flex;
-            align-items: center;
-            gap: 4px;
+            transform: translateX(-50%);
+            padding-bottom: 12px; /* Invisible hover bridge connecting overlay to toolbar */
+            z-index: 120;
             opacity: 0;
             pointer-events: none;
-            transition: all 0.2s ease;
-            z-index: 60;
-            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
         }
 
-        .webcam-overlay:hover .webcam-toolbar {
+        .webcam-toolbar-wrap.dock-below {
+            bottom: auto;
+            top: 100%;
+            padding-bottom: 0;
+            padding-top: 12px;
+        }
+
+        .webcam-overlay:hover .webcam-toolbar-wrap,
+        .webcam-toolbar-wrap:hover,
+        .webcam-toolbar-wrap:focus-within {
             opacity: 1;
             pointer-events: auto;
             transform: translateX(-50%) translateY(0);
+        }
+
+        .webcam-shortcut-hint {
+            background: rgba(15, 23, 42, 0.88);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #E2E8F0;
+            font-size: 0.72rem;
+            font-weight: 500;
+            padding: 3px 10px;
+            border-radius: 999px;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+            pointer-events: none;
+            user-select: none;
+        }
+
+        .webcam-shortcut-hint strong {
+            color: var(--brand-cyan);
+        }
+
+        .webcam-toolbar {
+            background: rgba(15, 23, 42, 0.94);
+            backdrop-filter: blur(14px);
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            border-radius: 999px;
+            padding: 4px 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+            white-space: nowrap;
+            user-select: none;
         }
 
         .webcam-tool-btn {
@@ -1380,16 +1430,16 @@
     <div class="landing-view" id="landingView">
         <div class="landing-card">
             <div class="landing-header">
-                <h2 id="txtLandingTitle">🥊 SlidePunch Presentation Studio</h2>
-                <p id="txtLandingSub">Record your slides slide-by-slide with real-time waveform, surgical audio editing, and 1-click video export.</p>
+                <h2 id="txtLandingTitle">🥊 Studio de Présentation SlidePunch</h2>
+                <p id="txtLandingSub">Enregistrez vos présentations slide-par-slide avec spectrogramme temps réel, édition intuitive et export vidéo 1-clic.</p>
             </div>
 
             <!-- Upload Dropzone -->
             <div class="landing-dropzone" id="mainLandingDropzone" onclick="document.getElementById('landingPdfInput').click()">
                 <input type="file" id="landingPdfInput" accept="application/pdf" style="display:none;" onchange="onLandingPdfSelected(this)">
                 <div class="dropzone-icon">📄</div>
-                <div class="dropzone-title" id="txtDropzoneTitle">Drop your Presentation PDF here</div>
-                <div class="dropzone-sub" id="txtDropzoneSub">or click to browse from your computer (LaTeX Beamer, PowerPoint, Typst, Keynote)</div>
+                <div class="dropzone-title" id="txtDropzoneTitle">Déposez votre présentation PDF ici</div>
+                <div class="dropzone-sub" id="txtDropzoneSub">ou cliquez pour choisir un fichier (LaTeX Beamer, PowerPoint, Typst, Keynote)</div>
             </div>
 
             <!-- Existing Projects List (Shown when 1 or more projects exist) -->
@@ -1405,16 +1455,16 @@
             <!-- Quick Features -->
             <div class="landing-features-grid">
                 <div class="feature-box">
-                    <h4 id="feat1Title">🔴 1-Click Record & Cut</h4>
-                    <p id="feat1Sub">Hit record and stop. Drag on the waveform to select and cut out any stumble instantly.</p>
+                    <h4 id="feat1Title">🔴 Punch-In Direct</h4>
+                    <p id="feat1Sub">Placez le curseur n'importe où sur la forme d'onde et réenregistrez pour écraser ou prolonger.</p>
                 </div>
                 <div class="feature-box">
-                    <h4 id="feat2Title">✏️ Live Prompter</h4>
-                    <p id="feat2Sub">Synchronized editable speaker script next to your slide, auto-saved in Markdown.</p>
+                    <h4 id="feat2Title">✏️ Prompteur Direct</h4>
+                    <p id="feat2Sub">Script de parole synchronisé à côté de vos slides, sauvegardé en Markdown.</p>
                 </div>
                 <div class="feature-box">
-                    <h4 id="feat3Title">🎬 1-Click Video</h4>
-                    <p id="feat3Sub">Exports a crisp 1080p presentation video with zero audio drift.</p>
+                    <h4 id="feat3Title">🎬 Vidéo en 1 Clic</h4>
+                    <p id="feat3Sub">Exporte une vidéo 1080p parfaitement calée sans montage.</p>
                 </div>
             </div>
         </div>
@@ -1441,8 +1491,10 @@
                 <div class="webcam-overlay shape-cutout" id="webcamOverlay" style="display:none;">
                     <div class="webcam-canvas-wrap" id="webcamCanvasWrap">
                         <canvas id="webcamDisplayCanvas"></canvas>
-                        
-                        <!-- Floating Mini Toolbar on Hover -->
+                    </div>
+
+                    <!-- Floating Mini Toolbar on Hover with bridge -->
+                    <div class="webcam-toolbar-wrap" id="webcamToolbarWrap">
                         <div class="webcam-toolbar" id="webcamToolbar">
                             <button class="webcam-tool-btn" id="btnWebcamShape" onclick="cycleWebcamShape(event)" title="Forme (Silhouette / Bulle ronde / Rectangle)">
                                 <span id="txtWebcamShapeIcon">👤</span> <span id="txtWebcamShapeLbl">Silhouette</span>
@@ -1453,9 +1505,19 @@
                             <button class="webcam-tool-btn" id="btnWebcamMirror" onclick="toggleWebcamMirror(event)" title="Miroir">
                                 <span>↔️</span>
                             </button>
+                            <button class="webcam-tool-btn" id="btnZoomOut" onclick="adjustWebcamZoom(-0.15, event)" title="Dézoomer visage"><span>➖</span></button>
+                            <button class="webcam-tool-btn" id="btnWebcamZoomReset" onclick="resetWebcamFraming(event)" title="Réinitialiser zoom & cadrage (Molette = Zoom, Maj+Glisser = Centrer)">
+                                <span id="txtWebcamZoomLbl">🔍 1.0x</span>
+                            </button>
+                            <button class="webcam-tool-btn" id="btnZoomIn" onclick="adjustWebcamZoom(0.15, event)" title="Zoomer visage"><span>➕</span></button>
                             <button class="webcam-tool-btn btn-close-cam" onclick="disableWebcam(event)" title="Fermer la caméra">
                                 <span>✕</span>
                             </button>
+                        </div>
+                        <div class="webcam-shortcut-hint" id="txtWebcamShortcutHint">
+                            <span>🖱️ <strong>Molette :</strong> Zoom</span>
+                            <span>•</span>
+                            <span>🖱️ <strong>Clic droit</strong> ou <strong>Maj+Glisser :</strong> Recadrer</span>
                         </div>
                     </div>
 
@@ -1466,8 +1528,9 @@
                     <div class="webcam-handle handle-br" data-handle="br"></div>
                 </div>
 
-                <!-- Hidden video element for feed -->
+                <!-- Hidden video elements for feed & playback -->
                 <video id="webcamVideo" playsinline autoplay muted style="display:none;"></video>
+                <video id="webcamPlaybackVideo" playsinline muted style="display:none;"></video>
             </div>
             <div class="preview-nav">
                 <button class="nav-btn" id="btnPrevSlide" onclick="prevSlide()">◀ Previous (←)</button>
@@ -1516,7 +1579,7 @@
                     <span class="playhead-badge" id="playheadTimeBadge">00:00.0</span>
                 </div>
                 <div id="waveformHint" style="color:#94A3B8;">
-                    Click to place playhead. Drag across to select a range to cut.
+                    Cliquez pour placer le curseur. Glissez pour sélectionner une plage à couper.
                 </div>
             </div>
             <div class="canvas-container" id="canvasContainer">
@@ -1536,69 +1599,67 @@
                 </div>
 
                 <div class="cam-controls-wrap">
-                    <button class="btn-webcam-toggle" id="btnToggleWebcam" onclick="toggleWebcam()" title="Activer / Désactiver la webcam avec détourage automatique">
+                    <button class="btn-webcam-toggle" id="btnToggleWebcam" onclick="toggleWebcam()" title="Activer / Désactiver la caméra">
                         <span id="txtWebcamIcon">📷</span> <span id="txtWebcamToggle">Caméra</span>
                     </button>
                     <select id="cameraSelect" class="camera-select" onchange="onCameraDeviceChanged()" style="display:none;" title="Source caméra"></select>
                 </div>
 
                 <div class="vu-container">
-                    <div class="vu-label" id="txtMicLevel">Mic Level</div>
+                    <div class="vu-label" id="txtMicLevel">Niveau Micro</div>
                     <div class="vu-bar-wrapper">
                         <div class="vu-bar" id="vuBar"></div>
                     </div>
                 </div>
             </div>
 
-            <!-- Center: Streamlined Actions (Capture Mode vs Edit Mode) -->
+            <!-- Center: Actions (Capture vs Edition) -->
             <div class="dock-center">
                 
                 <!-- 1. CAPTURE MODE CONTROLS -->
                 <div id="captureControls" style="display:flex; align-items:center; gap:12px;">
                     <button class="btn-ctl btn-rec-toggle" id="btnToggleRec" onclick="toggleRecording()">
-                        <span id="recIcon">●</span> <span id="txtRecToggle">Record (Space)</span>
+                        <span id="recIcon">●</span> <span id="txtRecToggle">Enregistrer (Espace)</span>
                     </button>
                     <button class="btn-ctl btn-paste" id="btnPaste" onclick="pasteAudioClipboard()" style="display:none;" title="Coller l'audio copié/coupé au curseur (Ctrl+V)">
-                        <span>📋</span> <span id="txtPaste">Paste (Ctrl+V)</span>
+                        <span>📋</span> <span id="txtPaste">Coller (Ctrl+V)</span>
                     </button>
                     <div class="timer-display" id="timerDisplay">00:00</div>
-                    <button class="btn-delete-all" id="btnDeleteAll" onclick="deleteCurrentSlideAudio()" style="display:none;" title="Effacer l'audio de cette diapositive">
-                        <span>🗑️</span> <span id="txtDeleteAll">Effacer l'audio</span>
-                    </button>
                 </div>
 
                 <!-- 2. EDIT MODE CONTROLS (Triggered on Waveform Drag Selection) -->
                 <div id="editControls" style="display:none; align-items:center; gap:10px;">
                     <button class="btn-ctl btn-cut-selection" id="btnCutSelection" onclick="cutSelectedRange()" title="Couper la sélection (Ctrl+X)">
-                        <span>✂️</span> <span id="txtCutSelection">Cut Selection</span>
+                        <span>✂️</span> <span id="txtCutSelection">Couper (Ctrl+X)</span>
                     </button>
                     <button class="btn-ctl btn-copy-selection" id="btnCopySelection" onclick="copySelectedRange()" title="Copier la sélection (Ctrl+C)">
-                        <span>📋</span> <span id="txtCopySelection">Copy (Ctrl+C)</span>
+                        <span>📋</span> <span id="txtCopySelection">Copier (Ctrl+C)</span>
                     </button>
                     <button class="btn-ctl btn-play-selection" id="btnPlaySelection" onclick="playSelectedRange()">
-                        <span>▶</span> <span id="txtPlaySelection">Play</span>
+                        <span>▶</span> <span id="txtPlaySelection">Écouter</span>
                     </button>
                     <button class="btn-ctl btn-cancel-selection" id="btnCancelSelection" onclick="clearSelection()">
-                        <span>✕</span> <span id="txtCancelSelection">Deselect (Esc)</span>
+                        <span>✕</span> <span id="txtCancelSelection">Annuler (Échap)</span>
                     </button>
                     <div class="selection-badge" id="selectionTimeBadge">00:00.0 (0.0s)</div>
-                    <button class="btn-delete-all" onclick="deleteCurrentSlideAudio()" title="Effacer l'audio de cette diapositive">
-                        <span>🗑️</span>
-                    </button>
                 </div>
 
             </div>
 
-            <!-- Right: Playback controls -->
+            <!-- Right: Playback controls & Clear Recording -->
             <div class="dock-right">
                 <div class="audio-player-box" id="customAudioPlayer">
                     <button class="btn-play-pause" id="btnPlayPause" onclick="togglePlayAudio()">▶</button>
-                    <button class="btn-skip" title="Skip back 5s" onclick="skipAudio(-5)">-5s</button>
-                    <button class="btn-skip" title="Skip forward 5s" onclick="skipAudio(5)">+5s</button>
+                    <button class="btn-skip" id="btnSkipBack" title="Reculer de 5s" onclick="skipAudio(-5)">-5s</button>
+                    <button class="btn-skip" id="btnSkipFwd" title="Avancer de 5s" onclick="skipAudio(5)">+5s</button>
                     <span class="time-label" id="curTimeLabel">00:00</span>
                     <span style="color:#CBD5E1;">/</span>
                     <span class="time-label" id="durTimeLabel">00:00</span>
                 </div>
+
+                <button class="btn-delete-all" id="btnDeleteAll" onclick="deleteCurrentSlideAudio()" style="display:none;" title="Effacer l'enregistrement de cette diapositive">
+                    <span>🗑️</span> <span id="txtDeleteAll">Effacer l'enregistrement</span>
+                </button>
             </div>
         </div>
 
@@ -1655,8 +1716,8 @@
         // ==========================================
         const i18n = {
             en: {
-                serverModeBadge: "⚡ Native Server",
-                webModeBadge: "🌐 In-Browser (Privacy First)",
+                serverModeBadge: "⚡ Local Server",
+                webModeBadge: "🌐 In-Browser (Private)",
                 projectLabel: "Project:",
                 newProjectBtn: "+ New",
                 exportVideoBtn: "Export Video",
@@ -1670,28 +1731,10 @@
                 prompterHint1: "✏️ <strong>Editable script</strong> (auto-saved)",
                 prompterHint2: "💡 Click outside to re-enable <kbd>Space</kbd>",
                 waveformTitle: "📊 <strong>Waveform</strong>",
-                waveformHint: "Click to move playhead. Drag across to select a range to cut.",
+                waveformHint: "Click to place playhead. Drag across to select a range to cut.",
                 defaultMic: "Default Microphone",
                 selectMicTitle: "Select Microphone",
                 micLevel: "Mic Level",
-                recordStart: "Record (Space)",
-                recordStop: "Stop & Save (Space)",
-                recordFromStart: "Record from start (Space)",
-                recordAppend: "Continue recording (Space)",
-                recordFrom: "Record from",
-                cutSelection: "Cut (Ctrl+X)",
-                copySelection: "Copy (Ctrl+C)",
-                pasteBtn: "Paste (Ctrl+V)",
-                playSelection: "Play Selection",
-                cancelSelection: "Deselect (Esc)",
-                deleteAll: "Clear Audio",
-                confirmClearAudio: "Clear audio recording for this slide?",
-                deleteSlideTitle: "Clear audio for this slide",
-                toastCopied: "Audio Copied ✓",
-                toastCut: "Audio Cut to Clipboard ✓",
-                toastPasted: "Audio Pasted ✓",
-                toastCleared: "Audio cleared ✓",
-                recentProjectsTitle: "📂 Continue Existing Project",
                 webcamToggle: "Camera",
                 defaultCam: "Default Camera",
                 webcamShapeCutout: "Cutout",
@@ -1700,20 +1743,43 @@
                 webcamBgCutout: "Cutout",
                 webcamBgBlur: "Blur",
                 webcamBgOriginal: "Normal",
+                webcamShortcutHint: "<span>🖱️ <strong>Wheel:</strong> Zoom</span> <span>•</span> <span>🖱️ <strong>Right-Click</strong> or <strong>Shift+Drag:</strong> Pan</span>",
+                recordStart: "Record (Space)",
+                recordStop: "Stop & Save (Space)",
+                recordFromStart: "Record from start (Space)",
+                recordAppend: "Continue recording (Space)",
+                recordFrom: "Record from",
+                cutSelection: "Cut (Ctrl+X)",
+                copySelection: "Copy (Ctrl+C)",
+                pasteBtn: "Paste (Ctrl+V)",
+                playSelection: "Play",
+                cancelSelection: "Deselect (Esc)",
+                deleteAll: "Clear Slide Recording",
+                confirmClearAudio: "Clear audio and video recording for this slide?",
+                deleteSlideTitle: "Clear recording for this slide",
+                toastCopied: "Audio copied ✓",
+                toastCut: "Audio cut to clipboard ✓",
+                toastPasted: "Audio pasted ✓",
+                toastCleared: "Recording cleared ✓",
+                toastZoom: "Zoom",
+                toastResetFraming: "Framing reset (1.0x)",
+                recentProjectsTitle: "📂 Continue Existing Project",
                 openStudioBtn: "Open Studio ➔",
                 studioNavBtn: "Studio",
                 prevBtn: "◀ Previous (←)",
                 nextBtn: "Next (→) ▶",
+                skipBackTitle: "Skip back 5s",
+                skipFwdTitle: "Skip forward 5s",
                 landingTitle: "🥊 SlidePunch Presentation Studio",
                 landingSub: "Record your presentation slide-by-slide with real-time waveform, instant audio editing, and 1-click video export.",
                 dropzoneTitle: "Drop your Presentation PDF here",
                 dropzoneSub: "or click to browse from your computer (LaTeX Beamer, PowerPoint, Typst, Keynote)",
-                feat1Title: "🔴 Live Punch-In Overdub",
-                feat1Sub: "Place the cursor anywhere on the waveform and hit Record to overwrite or append seamlessly.",
+                feat1Title: "🔴 Direct Overdub",
+                feat1Sub: "Place the cursor anywhere on the waveform to overwrite or extend seamlessly.",
                 feat2Title: "✏️ Live Prompter",
-                feat2Sub: "Synchronized editable speaker script next to your slide, auto-saved in Markdown.",
+                feat2Sub: "Synchronized speech script next to your slides, auto-saved in Markdown.",
                 feat3Title: "🎬 1-Click Video",
-                feat3Sub: "Exports a crisp 1080p presentation video with zero audio drift.",
+                feat3Sub: "Exports a clean 1080p MP4 presentation video with zero audio drift.",
                 modalNewTitle: "Create New Project",
                 modalTitleLabel: "Project Title:",
                 modalPdfLabel: "Slide PDF File:",
@@ -1723,9 +1789,10 @@
                 modalImportingTitle: "Importing PDF...",
                 modalImportingMsg: "Converting PDF slides into high-resolution images. Please wait...",
                 modalGeneratingTitle: "Generating Video...",
-                modalGeneratingMsg: "Stitching slide images and audio into a presentation video. Please wait...",
+                modalGeneratingMsg: "Assembling presentation video (1080p MP4)...",
                 modalSuccessTitle: "🎉 Video Ready!",
-                modalSuccessMsg: "Video successfully assembled!<br><br><a href=\"{url}\" download=\"presentation.webm\" target=\"_blank\" style=\"color:var(--brand-cyan); font-weight:700; font-size:1.1rem;\">▶ Download Video</a>",
+                modalSuccessMsg: "Your 1080p MP4 presentation video has been generated successfully.",
+                downloadVideoBtn: "🎬 Download Video (MP4 1080p)",
                 modalErrorTitle: "❌ Error",
                 closeBtn: "Close",
                 recordedStats: "recorded",
@@ -1733,7 +1800,7 @@
             },
             fr: {
                 serverModeBadge: "⚡ Serveur Local",
-                webModeBadge: "🌐 100% Navigateur (Privé)",
+                webModeBadge: "🌐 Navigateur (Privé)",
                 projectLabel: "Projet :",
                 newProjectBtn: "+ Nouveau",
                 exportVideoBtn: "Exporter la Vidéo",
@@ -1743,12 +1810,12 @@
                 targetPrefix: "Cible :",
                 savedBadge: "Sauvegardé ✓",
                 savingBadge: "Enregistrement...",
-                prompterPlaceholder: "Écrivez ou modifiez le script de cette slide ici...",
+                prompterPlaceholder: "Écrivez ou modifiez le script de cette diapositive ici...",
                 prompterHint1: "✏️ <strong>Script modifiable</strong> (auto-sauvegardé)",
                 prompterHint2: "💡 Cliquez en dehors pour réactiver <kbd>Espace</kbd>",
                 waveformTitle: "📊 <strong>Forme d'onde</strong>",
                 waveformHint: "Cliquez pour placer le curseur. Glissez pour sélectionner une plage à couper.",
-                defaultMic: "Micro par défaut",
+                defaultMic: "Microphone par défaut",
                 selectMicTitle: "Sélectionner le microphone",
                 micLevel: "Niveau Micro",
                 webcamToggle: "Caméra",
@@ -1759,8 +1826,9 @@
                 webcamBgCutout: "Détouré",
                 webcamBgBlur: "Flou",
                 webcamBgOriginal: "Normal",
+                webcamShortcutHint: "<span>🖱️ <strong>Molette :</strong> Zoom</span> <span>•</span> <span>🖱️ <strong>Clic droit</strong> ou <strong>Maj+Glisser :</strong> Recadrer</span>",
                 recordStart: "Enregistrer (Espace)",
-                recordStop: "Arrêter & Sauver (Espace)",
+                recordStop: "Arrêter & Sauvegarder (Espace)",
                 recordFromStart: "Enregistrer depuis le début (Espace)",
                 recordAppend: "Continuer l'enregistrement (Espace)",
                 recordFrom: "Enregistrer depuis",
@@ -1769,28 +1837,32 @@
                 pasteBtn: "Coller (Ctrl+V)",
                 playSelection: "Écouter",
                 cancelSelection: "Annuler (Échap)",
-                deleteAll: "Effacer l'audio",
-                confirmClearAudio: "Effacer l'enregistrement audio de cette diapositive ?",
-                deleteSlideTitle: "Effacer l'audio de cette diapositive",
+                deleteAll: "Effacer l'enregistrement",
+                confirmClearAudio: "Effacer l'enregistrement de cette diapositive ?",
+                deleteSlideTitle: "Effacer l'enregistrement de cette diapositive",
                 toastCopied: "Audio copié ✓",
                 toastCut: "Audio coupé dans le presse-papier ✓",
                 toastPasted: "Audio collé ✓",
-                toastCleared: "Audio effacé ✓",
+                toastCleared: "Enregistrement effacé ✓",
+                toastZoom: "Zoom",
+                toastResetFraming: "Cadrage réinitialisé (1.0x)",
                 recentProjectsTitle: "📂 Reprendre un projet existant",
                 openStudioBtn: "Ouvrir le Studio ➔",
                 studioNavBtn: "Studio",
                 prevBtn: "◀ Précédente (←)",
                 nextBtn: "Suivante (→) ▶",
+                skipBackTitle: "Reculer de 5s",
+                skipFwdTitle: "Avancer de 5s",
                 landingTitle: "🥊 Studio de Présentation SlidePunch",
-                landingSub: "Enregistrez vos présentations slide-par-slide avec spectrogramme temps réel, édition intuitive et export vidéo 1-clic.",
+                landingSub: "Enregistrez vos présentations slide-par-slide avec forme d'onde temps réel, édition intuitive et export vidéo 1-clic.",
                 dropzoneTitle: "Déposez votre présentation PDF ici",
                 dropzoneSub: "ou cliquez pour choisir un fichier (LaTeX Beamer, PowerPoint, Typst, Keynote)",
-                feat1Title: "🔴 Punch-In Direct",
-                feat1Sub: "Placez le curseur n'importe où sur la forme d'onde et réenregistrez pour écraser ou prolonger.",
-                feat2Title: "✏️ Prompteur Direct",
-                feat2Sub: "Script de parole synchronisé à côté de vos slides, sauvegardé en Markdown.",
+                feat1Title: "🔴 Enregistrement Direct",
+                feat1Sub: "Placez le curseur n'importe où sur la forme d'onde pour réenregistrer ou prolonger.",
+                feat2Title: "✏️ Prompteur Synchronisé",
+                feat2Sub: "Script de parole synchronisé avec chaque diapositive, sauvegardé en Markdown.",
                 feat3Title: "🎬 Vidéo en 1 Clic",
-                feat3Sub: "Exporte une vidéo 1080p parfaitement calée sans montage.",
+                feat3Sub: "Exporte une vidéo 1080p MP4 propre sans montage complexe.",
                 modalNewTitle: "Créer un Nouveau Projet",
                 modalTitleLabel: "Titre du Projet :",
                 modalPdfLabel: "Fichier PDF des Diapositives :",
@@ -1800,9 +1872,10 @@
                 modalImportingTitle: "Importation du PDF...",
                 modalImportingMsg: "Conversion des diapositives PDF en images haute résolution. Veuillez patienter...",
                 modalGeneratingTitle: "Génération de la Vidéo...",
-                modalGeneratingMsg: "Assemblage des diapositives et des enregistrements audio. Veuillez patienter...",
+                modalGeneratingMsg: "Assemblage de la vidéo de présentation (MP4 1080p)...",
                 modalSuccessTitle: "🎉 Vidéo Prête !",
-                modalSuccessMsg: "La vidéo a été assemblée avec succès !<br><br><a href=\"{url}\" download=\"presentation.webm\" target=\"_blank\" style=\"color:var(--brand-cyan); font-weight:700; font-size:1.1rem;\">▶ Télécharger la Vidéo</a>",
+                modalSuccessMsg: "Votre vidéo de présentation MP4 1080p a été assemblée avec succès !",
+                downloadVideoBtn: "🎬 Télécharger la Vidéo (MP4 1080p)",
                 modalErrorTitle: "❌ Erreur",
                 closeBtn: "Fermer",
                 recordedStats: "enregistrées",
@@ -1847,6 +1920,7 @@
         let saveTimeout = null;
         let selectedPdfBytes = null;
         let audioClipboard = null;
+        let videoClipboard = null;
 
         let selectedAudioDeviceId = localStorage.getItem('slidepunch_selected_mic') || '';
         let selectedCameraDeviceId = localStorage.getItem('slidepunch_selected_camera') || '';
@@ -1863,11 +1937,14 @@
             sizePct: 0.28,
             shape: 'cutout',
             bgMode: 'cutout',
-            mirrored: true
+            mirrored: true,
+            camZoom: 1.0,
+            camPanX: 0.0,
+            camPanY: 0.0
         };
 
         function t(key) {
-            return i18n[currentLang][key] || key;
+            return (i18n[currentLang] && i18n[currentLang][key]) || (i18n['en'] && i18n['en'][key]) || key;
         }
 
         function toggleLanguage() {
@@ -1893,11 +1970,15 @@
             document.getElementById('btnNextSlide').textContent = t('nextBtn');
             document.getElementById('txtPrompterHint1').innerHTML = t('prompterHint1');
             document.getElementById('txtPrompterHint2').innerHTML = t('prompterHint2');
+            const prompterArea = document.getElementById('prompterScript');
+            if (prompterArea) prompterArea.placeholder = t('prompterPlaceholder');
             document.getElementById('txtWaveformTitle').innerHTML = t('waveformTitle');
             document.getElementById('waveformHint').textContent = t('waveformHint');
             document.getElementById('txtMicLevel').textContent = t('micLevel');
             const camToggle = document.getElementById('txtWebcamToggle');
             if (camToggle) camToggle.textContent = t('webcamToggle') || "Caméra";
+            const shortcutHint = document.getElementById('txtWebcamShortcutHint');
+            if (shortcutHint) shortcutHint.innerHTML = t('webcamShortcutHint');
             updateWebcamOverlayDOM();
 
             document.getElementById('txtCutSelection').textContent = t('cutSelection');
@@ -1909,6 +1990,11 @@
             
             const btnDel = document.getElementById('btnDeleteAll');
             if (btnDel) btnDel.title = t('deleteSlideTitle');
+
+            const btnSkipBack = document.getElementById('btnSkipBack');
+            if (btnSkipBack) btnSkipBack.title = t('skipBackTitle');
+            const btnSkipFwd = document.getElementById('btnSkipFwd');
+            if (btnSkipFwd) btnSkipFwd.title = t('skipFwdTitle');
 
             document.getElementById('txtLandingTitle').textContent = t('landingTitle');
             document.getElementById('txtLandingSub').textContent = t('landingSub');
@@ -2010,11 +2096,14 @@
             window.addEventListener('resize', resizeCanvas);
             setupWaveformMouseEvents();
             setupLandingDragAndDrop();
+            setupWebcamDragAndResize();
+
+            // Instant translation before rendering
+            applyLanguage();
 
             await detectBackend();
             if (!isServerMode) {
                 await openIndexedDB();
-                // Purge legacy demo cache
                 try {
                     const tx = db.transaction(['projects', 'slides', 'audio'], 'readwrite');
                     tx.objectStore('projects').delete('hdr_demo');
@@ -2028,7 +2117,6 @@
                 } catch (e) {}
             }
 
-            applyLanguage();
             await populateMicrophoneList();
             if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
                 navigator.mediaDevices.addEventListener('devicechange', () => {
@@ -2037,7 +2125,18 @@
             }
 
             await loadProjectsList();
-            showLandingView();
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const projParam = urlParams.get('project');
+            if (projParam) {
+                currentProjectId = projParam;
+                await loadProject(projParam);
+                showStudioView();
+            } else {
+                showLandingView();
+            }
+
+            document.body.classList.add('ready');
         }
 
         function showLandingView() {
@@ -2211,6 +2310,7 @@
             }
 
             if (slides.length > 0) {
+                await loadProjectWebcamLayout(projId);
                 showStudioView();
                 document.getElementById('slideCountBadge').textContent = slides.length;
                 renderSidebar();
@@ -2283,6 +2383,17 @@
             
             const textarea = document.getElementById('prompterScript');
             textarea.value = slide.script || '';
+
+            // Ensure webcam overlay displays unified project layout
+            const overlay = document.getElementById('webcamOverlay');
+            if (slide.hasVideo || (slide.videoTimeline && slide.videoTimeline.length > 0) || webcamActive) {
+                overlay.style.display = 'flex';
+                updateWebcamOverlayDOM();
+                setupWebcamDragAndResize();
+                initMediaPipeSegmentation();
+            } else {
+                overlay.style.display = 'none';
+            }
 
             playheadPosition = 0.0;
             totalDuration = 0.0;
@@ -2540,6 +2651,11 @@
         const segmentBufferCanvas = document.createElement('canvas');
         const segmentBufferCtx = segmentBufferCanvas.getContext('2d', { willReadFrequently: true });
 
+        const webcamRecordCanvas = document.createElement('canvas');
+        webcamRecordCanvas.width = 720;
+        webcamRecordCanvas.height = 720;
+        const webcamRecordCtx = webcamRecordCanvas.getContext('2d');
+
         async function initMediaPipeSegmentation() {
             if (selfieSegmentation) return selfieSegmentation;
             if (typeof SelfieSegmentation === 'undefined') {
@@ -2549,7 +2665,7 @@
 
             try {
                 selfieSegmentation = new SelfieSegmentation({
-                    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1.1632777915/${file}`
+                    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1.1675465747/${file}`
                 });
 
                 selfieSegmentation.setOptions({
@@ -2664,14 +2780,30 @@
             if (!videoEl) return;
 
             try {
-                const constraints = {
-                    video: selectedCameraDeviceId
-                        ? { deviceId: { exact: selectedCameraDeviceId }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }
-                        : { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
-                    audio: false
+                let stream = null;
+                const videoConstraints = {
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                    frameRate: { ideal: 30 }
                 };
+                if (selectedCameraDeviceId) {
+                    videoConstraints.deviceId = { ideal: selectedCameraDeviceId };
+                }
 
-                webcamStream = await navigator.mediaDevices.getUserMedia(constraints);
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: videoConstraints,
+                        audio: false
+                    });
+                } catch (e1) {
+                    console.warn("Retrying getUserMedia with generic constraints...", e1);
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: true,
+                        audio: false
+                    });
+                }
+
+                webcamStream = stream;
                 videoEl.srcObject = webcamStream;
                 await videoEl.play();
 
@@ -2686,108 +2818,317 @@
             }
         }
 
-        async function processWebcamFrameLoop() {
-            if (!webcamActive) return;
+        function renderFallbackDirectWebcam(videoEl) {
+            const displayCanvas = document.getElementById('webcamDisplayCanvas');
+            if (!displayCanvas) return;
 
-            const videoEl = document.getElementById('webcamVideo');
-            if (videoEl && !videoEl.paused && !videoEl.ended && videoEl.readyState >= 2) {
-                if (selfieSegmentation && !isWebcamProcessing) {
-                    isWebcamProcessing = true;
-                    try {
-                        await selfieSegmentation.send({ image: videoEl });
-                    } catch (err) {
-                        // ignore dropped frames
-                    }
-                    isWebcamProcessing = false;
-                } else if (!selfieSegmentation) {
-                    // Fallback direct rendering if AI model loading
-                    const displayCanvas = document.getElementById('webcamDisplayCanvas');
-                    if (displayCanvas) {
-                        const dCtx = displayCanvas.getContext('2d');
-                        displayCanvas.width = videoEl.videoWidth || 640;
-                        displayCanvas.height = videoEl.videoHeight || 480;
-                        dCtx.save();
-                        if (webcamState.mirrored) {
-                            dCtx.translate(displayCanvas.width, 0);
-                            dCtx.scale(-1, 1);
+            const rawW = videoEl.videoWidth || 640;
+            const rawH = videoEl.videoHeight || 480;
+            const canvasDim = 720;
+            if (displayCanvas.width !== canvasDim || displayCanvas.height !== canvasDim) {
+                displayCanvas.width = canvasDim;
+                displayCanvas.height = canvasDim;
+            }
+
+            const zoom = Math.max(0.75, Math.min(3.0, webcamState.camZoom || 1.0));
+            const baseSide = Math.min(rawW, rawH);
+            const cropSide = Math.min(baseSide, (baseSide * 0.75) / zoom);
+            const maxPanX = (rawW - cropSide) / 2;
+            const maxPanY = (rawH - cropSide) / 2;
+            const panXRatio = Math.max(-1.0, Math.min(1.0, webcamState.camPanX || 0));
+            const panYRatio = Math.max(-1.0, Math.min(1.0, webcamState.camPanY || 0));
+
+            let sx = (rawW - cropSide) / 2 + (panXRatio * maxPanX);
+            let sy = (rawH - cropSide) / 2 + (panYRatio * maxPanY);
+            sx = Math.max(0, Math.min(rawW - cropSide, sx));
+            sy = Math.max(0, Math.min(rawH - cropSide, sy));
+
+            const dCtx = displayCanvas.getContext('2d');
+            dCtx.save();
+            dCtx.clearRect(0, 0, canvasDim, canvasDim);
+            if (webcamState.mirrored) {
+                dCtx.translate(canvasDim, 0);
+                dCtx.scale(-1, 1);
+            }
+            dCtx.drawImage(videoEl, sx, sy, cropSide, cropSide, 0, 0, canvasDim, canvasDim);
+            dCtx.restore();
+
+            if (recordingState === 'recording') {
+                webcamRecordCtx.save();
+                webcamRecordCtx.clearRect(0, 0, 720, 720);
+                if (webcamState.mirrored) {
+                    webcamRecordCtx.translate(720, 0);
+                    webcamRecordCtx.scale(-1, 1);
+                }
+                webcamRecordCtx.drawImage(videoEl, sx, sy, cropSide, cropSide, 0, 0, 720, 720);
+                webcamRecordCtx.restore();
+            }
+        }
+
+        let isWebcamPlaybackActive = false;
+        let currentPlaybackVideoTakeId = null;
+
+        function getVideoClipAtTime(timeline, t) {
+            if (!timeline || timeline.length === 0) return null;
+            let acc = 0.0;
+            for (let clip of timeline) {
+                if (t >= acc && t <= acc + clip.duration) {
+                    return {
+                        takeId: clip.takeId,
+                        srcTime: clip.srcStart + (t - acc),
+                        clipStart: acc,
+                        clipEnd: acc + clip.duration
+                    };
+                }
+                acc += clip.duration;
+            }
+            const last = timeline[timeline.length - 1];
+            return {
+                takeId: last.takeId,
+                srcTime: last.srcEnd,
+                clipStart: Math.max(0, acc - last.duration),
+                clipEnd: acc
+            };
+        }
+
+        function renderWebcamPlaybackFrame(targetTime) {
+            const slide = slides[currentIndex];
+            if (!slide || !slide.videoTimeline || slide.videoTimeline.length === 0) {
+                return false;
+            }
+
+            const clipInfo = getVideoClipAtTime(slide.videoTimeline, targetTime);
+            if (!clipInfo) return false;
+
+            const playbackVid = document.getElementById('webcamPlaybackVideo');
+            if (!playbackVid) return false;
+
+            const numStr = String(slide.number).padStart(2, '0');
+            const expectedSrc = `/api/slide_video?project=${currentProjectId}&file=slide_${numStr}_${clipInfo.takeId}.webm`;
+
+            if (currentPlaybackVideoTakeId !== clipInfo.takeId || !playbackVid.src.includes(`file=slide_${numStr}_${clipInfo.takeId}.webm`)) {
+                currentPlaybackVideoTakeId = clipInfo.takeId;
+                playbackVid.src = expectedSrc;
+                playbackVid.currentTime = clipInfo.srcTime;
+                playbackVid.play().catch(() => {});
+            } else {
+                if (Math.abs(playbackVid.currentTime - clipInfo.srcTime) > 0.25) {
+                    playbackVid.currentTime = clipInfo.srcTime;
+                }
+                if (playbackVid.paused && isPlaying) {
+                    playbackVid.play().catch(() => {});
+                }
+            }
+
+            return playbackVid.readyState >= 2;
+        }
+
+        async function processWebcamFrameLoop() {
+            const slide = slides[currentIndex];
+            const hasSlideVideo = slide && slide.videoTimeline && slide.videoTimeline.length > 0;
+
+            if (!webcamActive && !(isPlaying && hasSlideVideo)) {
+                return;
+            }
+
+            // 1. If audio is playing AND slide has recorded video, segment playback video in real time
+            if (isPlaying && hasSlideVideo) {
+                isWebcamPlaybackActive = true;
+                const isReady = renderWebcamPlaybackFrame(playheadPosition);
+                const playbackVid = document.getElementById('webcamPlaybackVideo');
+
+                if (isReady && playbackVid && !playbackVid.paused && !playbackVid.ended) {
+                    if (selfieSegmentation && !isWebcamProcessing) {
+                        isWebcamProcessing = true;
+                        try {
+                            await selfieSegmentation.send({ image: playbackVid });
+                        } catch (err) {}
+                        isWebcamProcessing = false;
+                    } else if (!selfieSegmentation) {
+                        const displayCanvas = document.getElementById('webcamDisplayCanvas');
+                        if (displayCanvas) {
+                            const dCtx = displayCanvas.getContext('2d');
+                            dCtx.clearRect(0, 0, 720, 720);
+                            dCtx.drawImage(playbackVid, 0, 0, 720, 720);
                         }
-                        dCtx.drawImage(videoEl, 0, 0, displayCanvas.width, displayCanvas.height);
-                        dCtx.restore();
+                    }
+                }
+            } else if (isWebcamPlaybackActive) {
+                // Playback stopped -> restore live webcam
+                isWebcamPlaybackActive = false;
+                currentPlaybackVideoTakeId = null;
+                const playbackVid = document.getElementById('webcamPlaybackVideo');
+                if (playbackVid) playbackVid.pause();
+
+                if (!webcamActive) {
+                    return;
+                }
+            }
+
+            // 2. If live webcam is active and not in playback mode, segment live camera feed
+            if (webcamActive && !isWebcamPlaybackActive) {
+                const videoEl = document.getElementById('webcamVideo');
+                if (videoEl && !videoEl.paused && !videoEl.ended && videoEl.readyState >= 2) {
+                    if (selfieSegmentation && !isWebcamProcessing) {
+                        isWebcamProcessing = true;
+                        try {
+                            await selfieSegmentation.send({ image: videoEl });
+                        } catch (err) {
+                            // ignore dropped frames
+                        }
+                        isWebcamProcessing = false;
+                    } else if (!selfieSegmentation) {
+                        // Fallback direct rendering with full zoom/pan
+                        renderFallbackDirectWebcam(videoEl);
                     }
                 }
             }
 
-            if (webcamActive) {
+            if (webcamActive || (isPlaying && hasSlideVideo)) {
                 requestAnimationFrame(processWebcamFrameLoop);
             }
         }
 
         function onSelfieSegmentationResults(results) {
-            if (!webcamActive) return;
+            const slide = slides[currentIndex];
+            const hasSlideVideo = slide && slide.videoTimeline && slide.videoTimeline.length > 0;
+            if (!webcamActive && !(isPlaying && hasSlideVideo)) return;
 
             const displayCanvas = document.getElementById('webcamDisplayCanvas');
             if (!displayCanvas) return;
 
-            const w = results.image.width || 640;
-            const h = results.image.height || 480;
+            const img = results.image;
+            const mask = results.segmentationMask;
 
-            if (displayCanvas.width !== w || displayCanvas.height !== h) {
-                displayCanvas.width = w;
-                displayCanvas.height = h;
+            const rawW = img.videoWidth || img.width || 640;
+            const rawH = img.videoHeight || img.height || 480;
+
+            const maskW = mask ? (mask.width || mask.videoWidth || rawW) : rawW;
+            const maskH = mask ? (mask.height || mask.videoHeight || rawH) : rawH;
+
+            const canvasDim = 720;
+            if (displayCanvas.width !== canvasDim || displayCanvas.height !== canvasDim) {
+                displayCanvas.width = canvasDim;
+                displayCanvas.height = canvasDim;
             }
-            if (segmentBufferCanvas.width !== w || segmentBufferCanvas.height !== h) {
-                segmentBufferCanvas.width = w;
-                segmentBufferCanvas.height = h;
+            if (segmentBufferCanvas.width !== canvasDim || segmentBufferCanvas.height !== canvasDim) {
+                segmentBufferCanvas.width = canvasDim;
+                segmentBufferCanvas.height = canvasDim;
+            }
+
+            let sx, sy, sw, sh, maskSx, maskSy, maskSw, maskSh, isMirrored;
+
+            if (isWebcamPlaybackActive) {
+                // Playback video framing is already encoded in the recorded file
+                sx = 0;
+                sy = 0;
+                sw = rawW;
+                sh = rawH;
+                maskSx = 0;
+                maskSy = 0;
+                maskSw = maskW;
+                maskSh = maskH;
+                isMirrored = false;
+            } else {
+                // Live camera feed: apply zoom & pan & mirror
+                const zoom = Math.max(0.75, Math.min(3.0, webcamState.camZoom || 1.0));
+                const baseSide = Math.min(rawW, rawH);
+                const cropSide = Math.min(baseSide, (baseSide * 0.75) / zoom);
+
+                const maxPanX = (rawW - cropSide) / 2;
+                const maxPanY = (rawH - cropSide) / 2;
+
+                const panXRatio = Math.max(-1.0, Math.min(1.0, webcamState.camPanX || 0));
+                const panYRatio = Math.max(-1.0, Math.min(1.0, webcamState.camPanY || 0));
+
+                sx = (rawW - cropSide) / 2 + (panXRatio * maxPanX);
+                sy = (rawH - cropSide) / 2 + (panYRatio * maxPanY);
+                sx = Math.max(0, Math.min(rawW - cropSide, sx));
+                sy = Math.max(0, Math.min(rawH - cropSide, sy));
+                sw = cropSide;
+                sh = cropSide;
+
+                const normX = sx / rawW;
+                const normY = sy / rawH;
+                const normW = sw / rawW;
+                const normH = sh / rawH;
+
+                maskSx = normX * maskW;
+                maskSy = normY * maskH;
+                maskSw = normW * maskW;
+                maskSh = normH * maskH;
+                isMirrored = !!webcamState.mirrored;
             }
 
             const dCtx = displayCanvas.getContext('2d');
             dCtx.save();
-            dCtx.clearRect(0, 0, w, h);
+            dCtx.clearRect(0, 0, canvasDim, canvasDim);
 
-            if (webcamState.bgMode === 'original') {
-                if (webcamState.mirrored) {
-                    dCtx.translate(w, 0);
+            if (webcamState.bgMode === 'original' && !isWebcamPlaybackActive) {
+                if (isMirrored) {
+                    dCtx.translate(canvasDim, 0);
                     dCtx.scale(-1, 1);
                 }
-                dCtx.drawImage(results.image, 0, 0, w, h);
-            } else if (webcamState.bgMode === 'blur') {
-                if (webcamState.mirrored) {
-                    dCtx.translate(w, 0);
+                dCtx.drawImage(img, sx, sy, sw, sh, 0, 0, canvasDim, canvasDim);
+            } else if (webcamState.bgMode === 'blur' && !isWebcamPlaybackActive) {
+                // 1. Blurred background
+                dCtx.save();
+                if (isMirrored) {
+                    dCtx.translate(canvasDim, 0);
                     dCtx.scale(-1, 1);
                 }
-                // Blurred background
-                dCtx.filter = 'blur(14px)';
-                dCtx.drawImage(results.image, 0, 0, w, h);
-                dCtx.filter = 'none';
+                dCtx.filter = 'blur(16px)';
+                dCtx.drawImage(img, sx, sy, sw, sh, 0, 0, canvasDim, canvasDim);
+                dCtx.restore();
 
-                // Segmented sharp person
-                segmentBufferCtx.clearRect(0, 0, w, h);
-                segmentBufferCtx.drawImage(results.segmentationMask, 0, 0, w, h);
-                segmentBufferCtx.globalCompositeOperation = 'source-in';
-                segmentBufferCtx.drawImage(results.image, 0, 0, w, h);
+                // 2. Segmented sharp person
+                segmentBufferCtx.save();
+                segmentBufferCtx.clearRect(0, 0, canvasDim, canvasDim);
+                if (isMirrored) {
+                    segmentBufferCtx.translate(canvasDim, 0);
+                    segmentBufferCtx.scale(-1, 1);
+                }
+                if (mask) {
+                    segmentBufferCtx.drawImage(mask, maskSx, maskSy, maskSw, maskSh, 0, 0, canvasDim, canvasDim);
+                    segmentBufferCtx.globalCompositeOperation = 'source-in';
+                }
+                segmentBufferCtx.drawImage(img, sx, sy, sw, sh, 0, 0, canvasDim, canvasDim);
                 segmentBufferCtx.globalCompositeOperation = 'source-over';
+                segmentBufferCtx.restore();
 
-                dCtx.drawImage(segmentBufferCanvas, 0, 0, w, h);
+                dCtx.drawImage(segmentBufferCanvas, 0, 0, canvasDim, canvasDim);
             } else {
                 // Pure transparent cutout!
-                segmentBufferCtx.clearRect(0, 0, w, h);
-                segmentBufferCtx.drawImage(results.segmentationMask, 0, 0, w, h);
-                segmentBufferCtx.globalCompositeOperation = 'source-in';
-                if (webcamState.mirrored) {
-                    segmentBufferCtx.save();
-                    segmentBufferCtx.translate(w, 0);
+                segmentBufferCtx.save();
+                segmentBufferCtx.clearRect(0, 0, canvasDim, canvasDim);
+                if (isMirrored) {
+                    segmentBufferCtx.translate(canvasDim, 0);
                     segmentBufferCtx.scale(-1, 1);
-                    segmentBufferCtx.drawImage(results.image, 0, 0, w, h);
-                    segmentBufferCtx.restore();
-                } else {
-                    segmentBufferCtx.drawImage(results.image, 0, 0, w, h);
                 }
+                if (mask) {
+                    segmentBufferCtx.drawImage(mask, maskSx, maskSy, maskSw, maskSh, 0, 0, canvasDim, canvasDim);
+                    segmentBufferCtx.globalCompositeOperation = 'source-in';
+                }
+                segmentBufferCtx.drawImage(img, sx, sy, sw, sh, 0, 0, canvasDim, canvasDim);
                 segmentBufferCtx.globalCompositeOperation = 'source-over';
+                segmentBufferCtx.restore();
 
-                dCtx.drawImage(segmentBufferCanvas, 0, 0, w, h);
+                dCtx.drawImage(segmentBufferCanvas, 0, 0, canvasDim, canvasDim);
             }
 
             dCtx.restore();
+
+            // If recording is active, draw clean unmasked RGB frame to recording canvas
+            if (recordingState === 'recording' && !isWebcamPlaybackActive) {
+                webcamRecordCtx.save();
+                webcamRecordCtx.clearRect(0, 0, 720, 720);
+                if (isMirrored) {
+                    webcamRecordCtx.translate(720, 0);
+                    webcamRecordCtx.scale(-1, 1);
+                }
+                webcamRecordCtx.drawImage(img, sx, sy, sw, sh, 0, 0, 720, 720);
+                webcamRecordCtx.restore();
+            }
         }
 
         function cycleWebcamShape(e) {
@@ -2812,18 +3153,89 @@
             updateWebcamOverlayDOM();
         }
 
+        function adjustWebcamZoom(delta, e) {
+            if (e) e.stopPropagation();
+            webcamState.camZoom = Math.max(0.75, Math.min(3.0, (webcamState.camZoom || 1.0) + delta));
+            updateWebcamOverlayDOM();
+            showSavedToast(`🔍 ${t('toastZoom')} ${webcamState.camZoom.toFixed(1)}x`);
+        }
+
+        function resetWebcamFraming(e) {
+            if (e) e.stopPropagation();
+            webcamState.camZoom = 1.0;
+            webcamState.camPanX = 0.0;
+            webcamState.camPanY = 0.0;
+            updateWebcamOverlayDOM();
+            showSavedToast(`🔍 ${t('toastResetFraming')}`);
+        }
+
+        function clampWebcamPositionAndSize() {
+            // Clamping rules to ensure the webcam NEVER exceeds the 16:9 slide bounds:
+            // max size: 0.50 (50% of width, which equals 50% * 16/9 = 88.8% of slide height)
+            webcamState.sizePct = Math.max(0.10, Math.min(0.50, webcamState.sizePct));
+            const maxXPct = Math.max(0, 1.0 - webcamState.sizePct);
+            const heightPct = webcamState.sizePct * (16 / 9);
+            const maxYPct = Math.max(0, 1.0 - heightPct);
+            
+            webcamState.xPct = Math.max(0, Math.min(maxXPct, webcamState.xPct));
+            webcamState.yPct = Math.max(0, Math.min(maxYPct, webcamState.yPct));
+        }
+
+        let saveLayoutTimeout = null;
+        function saveProjectWebcamLayout() {
+            if (!currentProjectId) return;
+            try {
+                localStorage.setItem(`slidepunch_webcam_layout_${currentProjectId}`, JSON.stringify(webcamState));
+                if (isServerMode) {
+                    clearTimeout(saveLayoutTimeout);
+                    saveLayoutTimeout = setTimeout(() => {
+                        fetch(`/api/save_project_layout?project=${currentProjectId}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(webcamState)
+                        }).catch(() => {});
+                    }, 350);
+                }
+            } catch(e) {}
+        }
+
+        async function loadProjectWebcamLayout(projId) {
+            const id = projId || currentProjectId;
+            if (!id) return;
+            try {
+                const saved = localStorage.getItem(`slidepunch_webcam_layout_${id}`);
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    Object.assign(webcamState, parsed);
+                }
+                if (isServerMode) {
+                    const res = await fetch(`/api/project_layout?project=${id}`);
+                    if (res.ok) {
+                        const srvLayout = await res.json();
+                        if (srvLayout && typeof srvLayout.xPct === 'number') {
+                            Object.assign(webcamState, srvLayout);
+                            localStorage.setItem(`slidepunch_webcam_layout_${id}`, JSON.stringify(webcamState));
+                        }
+                    }
+                }
+            } catch(e) {}
+        }
+
         function updateWebcamOverlayDOM() {
             const overlay = document.getElementById('webcamOverlay');
             if (!overlay) return;
 
+            clampWebcamPositionAndSize();
+
             // Apply Classes
             overlay.className = `webcam-overlay shape-${webcamState.shape}`;
             
-            // Apply Position & Size
+            // Apply Position & Size strictly bounded inside 16:9 container
             overlay.style.left = `${webcamState.xPct * 100}%`;
             overlay.style.top = `${webcamState.yPct * 100}%`;
             overlay.style.width = `${webcamState.sizePct * 100}%`;
-            overlay.style.height = `${webcamState.sizePct * 100}%`;
+            overlay.style.aspectRatio = '1 / 1';
+            overlay.style.height = 'auto';
 
             // Update Toolbar Button Labels & Icons
             const shapeIcon = document.getElementById('txtWebcamShapeIcon');
@@ -2851,24 +3263,50 @@
                 if (bgIcon) bgIcon.textContent = '📷';
                 if (bgLbl) bgLbl.textContent = t('webcamBgOriginal') || 'Normal';
             }
+
+            const zoomLbl = document.getElementById('txtWebcamZoomLbl');
+            if (zoomLbl) {
+                const z = webcamState.camZoom || 1.0;
+                zoomLbl.textContent = `🔍 ${z.toFixed(1)}x`;
+            }
+
+            const toolbarWrap = document.getElementById('webcamToolbarWrap');
+            if (toolbarWrap) {
+                if (webcamState.yPct < 0.14) {
+                    toolbarWrap.classList.add('dock-below');
+                } else {
+                    toolbarWrap.classList.remove('dock-below');
+                }
+            }
+
+            saveProjectWebcamLayout();
         }
 
         let isWebcamInteracting = false;
-        let webcamDragMode = null; // 'move' | 'tl' | 'tr' | 'bl' | 'br'
+        let webcamDragMode = null; // 'move' | 'pan' | 'tl' | 'tr' | 'bl' | 'br'
         let dragStartMouse = { x: 0, y: 0 };
-        let dragStartState = { xPct: 0, yPct: 0, sizePct: 0 };
+        let dragStartState = { xPct: 0, yPct: 0, sizePct: 0, camPanX: 0, camPanY: 0, camZoom: 1.0 };
 
         function setupWebcamDragAndResize() {
             const overlay = document.getElementById('webcamOverlay');
             const container = document.getElementById('slideImgContainer');
+            const canvasWrap = document.getElementById('webcamCanvasWrap');
+            const displayCanvas = document.getElementById('webcamDisplayCanvas');
             if (!overlay || !container) return;
 
+            overlay.oncontextmenu = (e) => {
+                // Prevent browser context menu so right-click pan works cleanly
+                e.preventDefault();
+            };
+
             overlay.onpointerdown = (e) => {
-                if (e.target.closest('.webcam-toolbar')) return;
+                if (e.target.closest('.webcam-toolbar') || e.target.closest('.webcam-toolbar-wrap')) return;
                 
                 const handle = e.target.closest('.webcam-handle');
                 if (handle) {
                     webcamDragMode = handle.dataset.handle; // 'tl', 'tr', 'bl', 'br'
+                } else if (e.shiftKey || e.button === 2 || e.button === 1) {
+                    webcamDragMode = 'pan'; // Shift+Drag, Right-click or Middle-click pans camera framing
                 } else {
                     webcamDragMode = 'move';
                 }
@@ -2876,7 +3314,14 @@
                 isWebcamInteracting = true;
                 overlay.classList.add('dragging');
                 dragStartMouse = { x: e.clientX, y: e.clientY };
-                dragStartState = { ...webcamState };
+                dragStartState = { 
+                    xPct: webcamState.xPct, 
+                    yPct: webcamState.yPct, 
+                    sizePct: webcamState.sizePct,
+                    camPanX: webcamState.camPanX || 0,
+                    camPanY: webcamState.camPanY || 0,
+                    camZoom: webcamState.camZoom || 1.0
+                };
 
                 overlay.setPointerCapture(e.pointerId);
                 e.preventDefault();
@@ -2892,33 +3337,43 @@
                 const dxPct = (e.clientX - dragStartMouse.x) / rect.width;
                 const dyPct = (e.clientY - dragStartMouse.y) / rect.height;
 
-                if (webcamDragMode === 'move') {
-                    const maxXPct = 1.0 - webcamState.sizePct;
-                    const maxYPct = 1.0 - webcamState.sizePct;
-                    webcamState.xPct = Math.max(0, Math.min(maxXPct, dragStartState.xPct + dxPct));
-                    webcamState.yPct = Math.max(0, Math.min(maxYPct, dragStartState.yPct + dyPct));
+                if (webcamDragMode === 'pan') {
+                    // Pan framing inside bubble (Loom style)
+                    const panSpeed = 3.5;
+                    const panDx = (dxPct * panSpeed) * (webcamState.mirrored ? -1 : 1);
+                    const panDy = dyPct * panSpeed;
+                    webcamState.camPanX = Math.max(-1.0, Math.min(1.0, dragStartState.camPanX + panDx));
+                    webcamState.camPanY = Math.max(-1.0, Math.min(1.0, dragStartState.camPanY + panDy));
+                } else if (webcamDragMode === 'move') {
+                    webcamState.xPct = dragStartState.xPct + dxPct;
+                    webcamState.yPct = dragStartState.yPct + dyPct;
+                    clampWebcamPositionAndSize();
                 } else if (webcamDragMode === 'br') {
-                    const dSize = Math.max(dxPct, dyPct);
-                    webcamState.sizePct = Math.max(0.12, Math.min(0.65, dragStartState.sizePct + dSize));
+                    const dSize = Math.max(dxPct, dyPct / (16 / 9));
+                    webcamState.sizePct = dragStartState.sizePct + dSize;
+                    clampWebcamPositionAndSize();
                 } else if (webcamDragMode === 'tl') {
-                    const dSize = -Math.min(dxPct, dyPct);
-                    const newSize = Math.max(0.12, Math.min(0.65, dragStartState.sizePct + dSize));
+                    const dSize = -Math.min(dxPct, dyPct / (16 / 9));
+                    const newSize = Math.max(0.10, Math.min(0.50, dragStartState.sizePct + dSize));
                     const delta = newSize - dragStartState.sizePct;
                     webcamState.sizePct = newSize;
-                    webcamState.xPct = Math.max(0, dragStartState.xPct - delta);
-                    webcamState.yPct = Math.max(0, dragStartState.yPct - delta);
+                    webcamState.xPct = dragStartState.xPct - delta;
+                    webcamState.yPct = dragStartState.yPct - (delta * 16 / 9);
+                    clampWebcamPositionAndSize();
                 } else if (webcamDragMode === 'tr') {
-                    const dSize = Math.max(dxPct, -dyPct);
-                    const newSize = Math.max(0.12, Math.min(0.65, dragStartState.sizePct + dSize));
+                    const dSize = Math.max(dxPct, -dyPct / (16 / 9));
+                    const newSize = Math.max(0.10, Math.min(0.50, dragStartState.sizePct + dSize));
                     const delta = newSize - dragStartState.sizePct;
                     webcamState.sizePct = newSize;
-                    webcamState.yPct = Math.max(0, dragStartState.yPct - delta);
+                    webcamState.yPct = dragStartState.yPct - (delta * 16 / 9);
+                    clampWebcamPositionAndSize();
                 } else if (webcamDragMode === 'bl') {
-                    const dSize = Math.max(-dxPct, dyPct);
-                    const newSize = Math.max(0.12, Math.min(0.65, dragStartState.sizePct + dSize));
+                    const dSize = Math.max(-dxPct, dyPct / (16 / 9));
+                    const newSize = Math.max(0.10, Math.min(0.50, dragStartState.sizePct + dSize));
                     const delta = newSize - dragStartState.sizePct;
                     webcamState.sizePct = newSize;
-                    webcamState.xPct = Math.max(0, dragStartState.xPct - delta);
+                    webcamState.xPct = dragStartState.xPct - delta;
+                    clampWebcamPositionAndSize();
                 }
 
                 updateWebcamOverlayDOM();
@@ -2933,14 +3388,19 @@
                 }
             };
 
-            // Mouse wheel zoom
-            overlay.onwheel = (e) => {
+            // Unified wheel listener for face zoom
+            const onWheelZoom = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                const delta = e.deltaY < 0 ? 0.02 : -0.02;
-                webcamState.sizePct = Math.max(0.12, Math.min(0.65, webcamState.sizePct + delta));
+                const step = (e.deltaY < 0 ? 0.10 : -0.10);
+                webcamState.camZoom = Math.max(0.75, Math.min(3.0, (webcamState.camZoom || 1.0) + step));
                 updateWebcamOverlayDOM();
+                showSavedToast(`🔍 ${t('toastZoom')} ${webcamState.camZoom.toFixed(1)}x`);
             };
+
+            overlay.onwheel = onWheelZoom;
+            if (canvasWrap) canvasWrap.onwheel = onWheelZoom;
+            if (displayCanvas) displayCanvas.onwheel = onWheelZoom;
         }
 
         // ==========================================
@@ -3061,15 +3521,17 @@
                 scriptProcessor.connect(audioContext.destination);
 
                 // Start webcam recording if active
-                const displayCanvas = document.getElementById('webcamDisplayCanvas');
-                if (webcamActive && displayCanvas) {
+                if (webcamActive) {
                     try {
-                        const vStream = displayCanvas.captureStream(30);
+                        const vStream = webcamRecordCanvas.captureStream(30);
                         webcamRecordedChunks = [];
                         const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
                             ? 'video/webm;codecs=vp9'
                             : 'video/webm';
-                        webcamMediaRecorder = new MediaRecorder(vStream, { mimeType: mime });
+                        webcamMediaRecorder = new MediaRecorder(vStream, {
+                            mimeType: mime,
+                            videoBitsPerSecond: 4000000
+                        });
                         webcamMediaRecorder.ondataavailable = (e) => {
                             if (e.data && e.data.size > 0) {
                                 webcamRecordedChunks.push(e.data);
@@ -3162,11 +3624,24 @@
             totalDuration = currentSamples.length / sampleRate;
             playheadPosition = (punchInStartSample + newTake.length) / sampleRate;
 
+            const newTakeDur = newTake.length / sampleRate;
+            const punchInTimeSec = punchInStartSample / sampleRate;
+            const takeId = 'take_' + Date.now();
+            const slide = slides[currentIndex];
+
+            if (recordedCamBlob) {
+                if (!slide.videoTimeline || slide.videoTimeline.length === 0 || punchInStartSample === 0) {
+                    slide.videoTimeline = [{ takeId: takeId, srcStart: 0, srcEnd: newTakeDur, duration: newTakeDur }];
+                } else {
+                    slide.videoTimeline = spliceVideoTimeline(slide.videoTimeline, punchInTimeSec, newTakeDur, takeId);
+                }
+            }
+
             const wavBlob = encodeWAV(currentSamples, sampleRate);
-            await saveSlideAudio(wavBlob, true, recordedCamBlob);
+            await saveSlideAudio(wavBlob, true, recordedCamBlob, takeId);
         }
 
-        async function saveSlideAudio(blob, preservePlayhead = true, recordedCamBlob = null) {
+        async function saveSlideAudio(blob, preservePlayhead = true, recordedCamBlob = null, takeId = null) {
             const slide = slides[currentIndex];
             const dur = currentSamples.length / sampleRate;
 
@@ -3180,13 +3655,14 @@
                     const data = await res.json();
 
                     // 2. Upload video if recorded
-                    if (recordedCamBlob) {
+                    if (recordedCamBlob && takeId) {
                         try {
-                            const camUrl = `/api/save_slide_video?project=${currentProjectId}&slide=${slide.number}&x=${webcamState.xPct}&y=${webcamState.yPct}&w=${webcamState.sizePct}&shape=${webcamState.shape}&bgMode=${webcamState.bgMode}`;
+                            const camUrl = `/api/save_slide_video_take?project=${currentProjectId}&slide=${slide.number}&takeId=${takeId}&x=${webcamState.xPct}&y=${webcamState.yPct}&w=${webcamState.sizePct}&shape=${webcamState.shape}&bgMode=${webcamState.bgMode}`;
                             await fetch(camUrl, {
                                 method: 'POST',
                                 body: recordedCamBlob
                             });
+                            await saveSlideTimeline(currentProjectId, slide.number, slide.videoTimeline, webcamState);
                         } catch (e) {
                             console.warn("Failed to upload slide webcam video:", e);
                         }
@@ -3246,7 +3722,158 @@
         }
 
         // ==========================================
-        // EDIT MODE: CUT, COPY & PASTE AUDIO CLIPBOARD
+        // VIDEO TIMELINE EDL ENGINE (NON-LINEAR SLICE / CUT / PASTE / PUNCH-IN)
+        // ==========================================
+
+        async function saveSlideTimeline(projectId, slideNum, timeline, layout) {
+            if (!isServerMode || !projectId || !slideNum) return;
+            try {
+                await fetch(`/api/save_slide_timeline?project=${projectId}&slide=${slideNum}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ timeline: timeline || [], layout: layout || {} })
+                });
+            } catch (err) {
+                console.warn("Failed to save slide timeline:", err);
+            }
+        }
+
+        function sliceVideoTimeline(timeline, tStart, tEnd) {
+            if (!timeline || timeline.length === 0 || tEnd <= tStart) return null;
+            const result = [];
+            let curTime = 0.0;
+            for (const clip of timeline) {
+                const clipStart = curTime;
+                const clipEnd = curTime + clip.duration;
+                if (clipEnd > tStart && clipStart < tEnd) {
+                    const overlapStart = Math.max(clipStart, tStart);
+                    const overlapEnd = Math.min(clipEnd, tEnd);
+                    const srcOffsetStart = clip.srcStart + (overlapStart - clipStart);
+                    const srcOffsetEnd = clip.srcStart + (overlapEnd - clipStart);
+                    const dur = overlapEnd - overlapStart;
+                    if (dur > 0.001) {
+                        result.push({
+                            takeId: clip.takeId,
+                            srcStart: srcOffsetStart,
+                            srcEnd: srcOffsetEnd,
+                            duration: dur
+                        });
+                    }
+                }
+                curTime = clipEnd;
+            }
+            return result.length > 0 ? result : null;
+        }
+
+        function cutVideoTimeline(timeline, tStart, tEnd) {
+            if (!timeline || timeline.length === 0 || tEnd <= tStart) return timeline || [];
+            const newTimeline = [];
+            let curTime = 0.0;
+            for (const clip of timeline) {
+                const clipStart = curTime;
+                const clipEnd = curTime + clip.duration;
+                if (clipEnd <= tStart || clipStart >= tEnd) {
+                    // Entirely outside cut range
+                    newTimeline.push({ ...clip });
+                } else {
+                    // Left part before cut
+                    if (clipStart < tStart) {
+                        const durLeft = tStart - clipStart;
+                        if (durLeft > 0.001) {
+                            newTimeline.push({
+                                takeId: clip.takeId,
+                                srcStart: clip.srcStart,
+                                srcEnd: clip.srcStart + durLeft,
+                                duration: durLeft
+                            });
+                        }
+                    }
+                    // Right part after cut
+                    if (clipEnd > tEnd) {
+                        const durRight = clipEnd - tEnd;
+                        const offset = tEnd - clipStart;
+                        if (durRight > 0.001) {
+                            newTimeline.push({
+                                takeId: clip.takeId,
+                                srcStart: clip.srcStart + offset,
+                                srcEnd: clip.srcEnd,
+                                duration: durRight
+                            });
+                        }
+                    }
+                }
+                curTime = clipEnd;
+            }
+            return newTimeline;
+        }
+
+        function insertVideoTimeline(timeline, insertTime, clipsToInsert) {
+            if (!timeline || timeline.length === 0) {
+                return clipsToInsert ? clipsToInsert.map(c => ({...c})) : [];
+            }
+            if (!clipsToInsert || clipsToInsert.length === 0) return timeline;
+            
+            const newTimeline = [];
+            let curTime = 0.0;
+            let inserted = false;
+            
+            for (const clip of timeline) {
+                const clipStart = curTime;
+                const clipEnd = curTime + clip.duration;
+                
+                if (!inserted && insertTime <= clipStart) {
+                    for (const c of clipsToInsert) newTimeline.push({ ...c });
+                    inserted = true;
+                }
+                
+                if (!inserted && insertTime > clipStart && insertTime < clipEnd) {
+                    // Split clip in half
+                    const durLeft = insertTime - clipStart;
+                    if (durLeft > 0.001) {
+                        newTimeline.push({
+                            takeId: clip.takeId,
+                            srcStart: clip.srcStart,
+                            srcEnd: clip.srcStart + durLeft,
+                            duration: durLeft
+                        });
+                    }
+                    for (const c of clipsToInsert) newTimeline.push({ ...c });
+                    inserted = true;
+                    
+                    const durRight = clipEnd - insertTime;
+                    if (durRight > 0.001) {
+                        newTimeline.push({
+                            takeId: clip.takeId,
+                            srcStart: clip.srcStart + durLeft,
+                            srcEnd: clip.srcEnd,
+                            duration: durRight
+                        });
+                    }
+                } else {
+                    newTimeline.push({ ...clip });
+                }
+                
+                curTime = clipEnd;
+            }
+            
+            if (!inserted) {
+                for (const c of clipsToInsert) newTimeline.push({ ...c });
+            }
+            return newTimeline;
+        }
+
+        function spliceVideoTimeline(timeline, punchInStart, newTakeDur, takeId) {
+            if (!timeline || timeline.length === 0 || punchInStart === 0) {
+                return [{ takeId: takeId, srcStart: 0, srcEnd: newTakeDur, duration: newTakeDur }];
+            }
+            const punchInEnd = punchInStart + newTakeDur;
+            const remaining = cutVideoTimeline(timeline, punchInStart, punchInEnd);
+            const newClip = [{ takeId: takeId, srcStart: 0, srcEnd: newTakeDur, duration: newTakeDur }];
+            return insertVideoTimeline(remaining, punchInStart, newClip);
+        }
+
+        // ==========================================
+        // EDIT MODE: CUT, COPY & PASTE AUDIO & VIDEO CLIPBOARD
         // ==========================================
 
         function copySelectedRange() {
@@ -3258,6 +3885,13 @@
             if (sEnd <= sStart) return;
 
             audioClipboard = currentSamples.slice(sStart, sEnd);
+            const slide = slides[currentIndex];
+            if (slide && slide.videoTimeline) {
+                videoClipboard = sliceVideoTimeline(slide.videoTimeline, selectionStart, selectionEnd);
+            } else {
+                videoClipboard = null;
+            }
+
             const dur = (sEnd - sStart) / sampleRate;
             showSavedToast(`${t('toastCopied')} (${formatSecExact(dur)})`);
             updateControlUI();
@@ -3273,8 +3907,16 @@
 
             if (sEnd <= sStart) return;
 
-            // Copy cut portion to clipboard for pasting elsewhere!
+            // Copy cut portion to audio & video clipboard
             audioClipboard = currentSamples.slice(sStart, sEnd);
+            const slide = slides[currentIndex];
+            if (slide && slide.videoTimeline && slide.videoTimeline.length > 0) {
+                videoClipboard = sliceVideoTimeline(slide.videoTimeline, selectionStart, selectionEnd);
+                slide.videoTimeline = cutVideoTimeline(slide.videoTimeline, selectionStart, selectionEnd);
+                await saveSlideTimeline(currentProjectId, slide.number, slide.videoTimeline, webcamState);
+            } else {
+                videoClipboard = null;
+            }
 
             const before = currentSamples.slice(0, sStart);
             const after = currentSamples.slice(sEnd);
@@ -3344,7 +3986,15 @@
 
             currentSamples = before.concat(inserted, after);
             totalDuration = currentSamples.length / sampleRate;
+            const insertTime = playheadPosition;
             playheadPosition = (sPos + inserted.length) / sampleRate;
+
+            // Splice video clipboard if present
+            const slide = slides[currentIndex];
+            if (slide && videoClipboard && videoClipboard.length > 0) {
+                slide.videoTimeline = insertVideoTimeline(slide.videoTimeline || [], insertTime, videoClipboard);
+                await saveSlideTimeline(currentProjectId, slide.number, slide.videoTimeline, webcamState);
+            }
 
             const wavBlob = encodeWAV(currentSamples, sampleRate);
             await saveSlideAudio(wavBlob, true);
@@ -3368,6 +4018,7 @@
             stopPlayback();
             clearSelection();
             audioClipboard = null;
+            videoClipboard = null;
 
             currentSamples = [];
             totalDuration = 0.0;
@@ -3435,6 +4086,18 @@
             isPlaying = true;
             document.getElementById('btnPlayPause').textContent = '⏸';
 
+            // If slide has recorded video, activate overlay & video playback loop
+            const curSlide = slides[currentIndex];
+            if (curSlide && (curSlide.hasVideo || (curSlide.videoTimeline && curSlide.videoTimeline.length > 0))) {
+                const overlay = document.getElementById('webcamOverlay');
+                if (overlay) {
+                    overlay.style.display = 'flex';
+                    updateWebcamOverlayDOM();
+                }
+                initMediaPipeSegmentation();
+                requestAnimationFrame(processWebcamFrameLoop);
+            }
+
             playbackSource.onended = () => {
                 if (isPlaying) {
                     stopPlayback();
@@ -3468,6 +4131,13 @@
             isPlaying = false;
             clearInterval(playbackAnimFrame);
             document.getElementById('btnPlayPause').textContent = '▶';
+
+            isWebcamPlaybackActive = false;
+            currentPlaybackVideoTakeId = null;
+            const playbackVid = document.getElementById('webcamPlaybackVideo');
+            if (playbackVid) {
+                playbackVid.pause();
+            }
         }
 
         function skipAudio(seconds) {
@@ -3490,6 +4160,13 @@
             const timer = document.getElementById('timerDisplay');
             const btnDeleteAll = document.getElementById('btnDeleteAll');
             const btnPaste = document.getElementById('btnPaste');
+
+            // Delete / Clear Recording button visibility in dock-right
+            const curSlide = slides[currentIndex];
+            const hasSlideRec = currentSamples.length > 0 || (curSlide && (curSlide.hasAudio || curSlide.hasVideo || (curSlide.videoTimeline && curSlide.videoTimeline.length > 0)));
+            if (btnDeleteAll) {
+                btnDeleteAll.style.display = (hasSlideRec && recordingState !== 'recording') ? 'inline-flex' : 'none';
+            }
 
             // Check if Range Selection is active -> Switch to Edit Mode
             const isEditing = selectionStart !== null && selectionEnd !== null && selectionEnd > selectionStart;
@@ -3516,7 +4193,6 @@
                     txtRec.textContent = t('recordStop');
                     timer.textContent = formatSec(totalDuration);
                     timer.style.color = 'var(--danger)';
-                    btnDeleteAll.style.display = 'none';
                 } else {
                     btnRec.className = 'btn-ctl btn-rec-toggle';
                     recIcon.textContent = '●';
@@ -3527,16 +4203,15 @@
                         } else if (playheadPosition >= totalDuration - 0.05) {
                             txtRec.textContent = t('recordAppend');
                         } else {
-                            txtRec.textContent = `${t('recordFrom')} ${formatSecExact(playheadPosition)} (Espace)`;
+                            const spaceKey = currentLang === 'en' ? '(Space)' : '(Espace)';
+                            txtRec.textContent = `${t('recordFrom')} ${formatSecExact(playheadPosition)} ${spaceKey}`;
                         }
                         timer.textContent = formatSec(totalDuration);
                         timer.style.color = '#15803D';
-                        btnDeleteAll.style.display = 'flex';
                     } else {
                         txtRec.textContent = t('recordStart');
                         timer.textContent = "00:00";
                         timer.style.color = 'var(--brand-navy)';
-                        btnDeleteAll.style.display = 'none';
                     }
                 }
             }
@@ -3850,19 +4525,32 @@
 
             if (isServerMode) {
                 try {
+                    spinner.style.display = 'block';
+                    progressWrap.style.display = 'none';
+                    msg.innerHTML = `<span style="font-size:1.05rem; font-weight:600; color:var(--text-main);">${t('modalGeneratingMsg')}</span>`;
+
                     const res = await fetch(`/api/generate_video?project=${currentProjectId}`, { method: 'POST' });
                     const data = await res.json();
-                    progressWrap.style.display = 'none';
+                    spinner.style.display = 'none';
                     closeBtn.style.display = 'block';
 
                     if (data.success) {
                         title.textContent = t('modalSuccessTitle');
-                        msg.innerHTML = t('modalSuccessMsg').replace('{url}', data.videoUrl);
+                        const downloadUrl = `/api/video?project=${currentProjectId}&t=${Date.now()}`;
+                        msg.innerHTML = `
+                            <div style="text-align:center; padding:15px 0;">
+                                <p style="font-size:1.05rem; color:var(--text-main); margin-bottom:20px;">${t('modalSuccessMsg')}</p>
+                                <a href="${downloadUrl}" download="${currentProjectId}_presentation.mp4" target="_blank" class="btn-primary" style="display:inline-flex; align-items:center; gap:8px; padding:14px 28px; font-size:1.1rem; text-decoration:none; border-radius:8px; font-weight:700; background:linear-gradient(135deg, #0284C7, #0369A1); color:#fff; box-shadow:0 4px 14px rgba(2,132,199,0.35);">
+                                    ${t('downloadVideoBtn')}
+                                </a>
+                            </div>
+                        `;
                     } else {
                         title.textContent = t('modalErrorTitle');
-                        msg.textContent = data.message || "Error generating video.";
+                        msg.textContent = data.message || (currentLang === 'fr' ? "Erreur lors de la génération de la vidéo." : "Error generating video.");
                     }
                 } catch (err) {
+                    spinner.style.display = 'none';
                     progressWrap.style.display = 'none';
                     closeBtn.style.display = 'block';
                     title.textContent = t('modalErrorTitle');
@@ -3884,21 +4572,23 @@
                         ...audioDest.stream.getAudioTracks()
                     ]);
 
-                    const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') 
-                        ? 'video/webm;codecs=vp9,opus' 
-                        : (MediaRecorder.isTypeSupported('video/mp4') ? 'video/mp4' : 'video/webm');
+                    const mimeType = MediaRecorder.isTypeSupported('video/mp4') 
+                        ? 'video/mp4' 
+                        : (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') ? 'video/webm;codecs=vp9,opus' : 'video/webm');
 
-                    const recorder = new MediaRecorder(combinedStream, { mimeType });
+                    const recorder = new MediaRecorder(combinedStream, { 
+                        mimeType,
+                        videoBitsPerSecond: 8000000 
+                    });
                     const chunks = [];
                     recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
-
-                    recorder.start();
+                    recorder.start(100);
 
                     for (let i = 0; i < slides.length; i++) {
                         const s = slides[i];
                         const pct = Math.round(((i + 1) / slides.length) * 100);
                         progressBar.style.width = `${pct}%`;
-                        msg.innerHTML = `<span style="font-size:1.1rem; font-weight:800; color:var(--brand-navy);">Assemblage Diapositive ${s.number} / ${slides.length} (${pct}%)</span>`;
+                        msg.innerHTML = `<span style="font-size:1.1rem; font-weight:800; color:var(--brand-navy);">${t('slidesHeader') || 'Diapositive'} ${s.number} / ${slides.length} (${pct}%)</span>`;
                         
                         const img = new Image();
                         await new Promise((resolve) => {
@@ -3920,7 +4610,7 @@
                                 srcNode.onended = resolve;
                             });
                         } else {
-                            await new Promise(r => setTimeout(r, 3000));
+                            await new Promise(r => setTimeout(r, 2000));
                         }
                     }
 
