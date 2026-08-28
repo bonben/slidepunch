@@ -3752,6 +3752,28 @@
             }
         }
 
+        // A "gap" clip (takeId null) means: no camera during this span. Gaps are
+        // first-class timeline entries so that the video timeline always covers
+        // exactly the same span as the audio track. Any edit that changes audio
+        // length MUST make the matching change here, or later camera clips slide
+        // out of position and appear over footage that was never filmed.
+        function makeVideoGap(duration) {
+            return { takeId: null, srcStart: 0, srcEnd: duration, duration: duration };
+        }
+
+        function timelineTotalDuration(timeline) {
+            if (!timeline || timeline.length === 0) return 0;
+            return timeline.reduce((acc, c) => acc + (c.duration || 0), 0);
+        }
+
+        // Ensure `timeline` spans at least `targetDur` by appending a trailing gap.
+        function padTimelineToDuration(timeline, targetDur) {
+            const clips = (timeline || []).map(c => ({ ...c }));
+            const missing = targetDur - timelineTotalDuration(clips);
+            if (missing > 0.001) clips.push(makeVideoGap(missing));
+            return clips;
+        }
+
         function sliceVideoTimeline(timeline, tStart, tEnd) {
             if (!timeline || timeline.length === 0 || tEnd <= tStart) return null;
             const result = [];
@@ -3900,13 +3922,16 @@
 
             audioClipboard = currentSamples.slice(sStart, sEnd);
             const slide = slides[currentIndex];
-            if (slide && slide.videoTimeline) {
-                videoClipboard = sliceVideoTimeline(slide.videoTimeline, selectionStart, selectionEnd);
+            const dur = (sEnd - sStart) / sampleRate;
+            if (slide && slide.videoTimeline && slide.videoTimeline.length > 0) {
+                // Pad to the copied audio length: the camera timeline may end
+                // before the selection does, and a short clipboard would shift
+                // everything downstream when pasted.
+                videoClipboard = padTimelineToDuration(
+                    sliceVideoTimeline(slide.videoTimeline, selectionStart, selectionEnd) || [], dur);
             } else {
                 videoClipboard = null;
             }
-
-            const dur = (sEnd - sStart) / sampleRate;
             showSavedToast(`${t('toastCopied')} (${formatSecExact(dur)})`);
             updateControlUI();
         }
@@ -3924,19 +3949,28 @@
             // Copy cut portion to audio & video clipboard
             audioClipboard = currentSamples.slice(sStart, sEnd);
             const slide = slides[currentIndex];
-            if (slide && slide.videoTimeline && slide.videoTimeline.length > 0) {
-                videoClipboard = sliceVideoTimeline(slide.videoTimeline, selectionStart, selectionEnd);
-                slide.videoTimeline = cutVideoTimeline(slide.videoTimeline, selectionStart, selectionEnd);
-                await saveSlideTimeline(currentProjectId, slide.number, slide.videoTimeline, webcamState);
-            } else {
-                videoClipboard = null;
-            }
 
             const before = currentSamples.slice(0, sStart);
             const after = currentSamples.slice(sEnd);
 
             // 5ms crossfade at the boundary to eliminate clicks
             const xfadeLen = Math.min(Math.floor(0.005 * sampleRate), before.length, after.length);
+
+            // The audio loses (sEnd - sStart) PLUS xfadeLen samples (the crossfade
+            // eats into `after`). The video timeline must lose exactly the same
+            // span, or audio and camera drift apart by 5ms on every cut.
+            if (slide && slide.videoTimeline && slide.videoTimeline.length > 0) {
+                const removedDur = ((sEnd - sStart) + xfadeLen) / sampleRate;
+                const cutEndForVideo = selectionStart + removedDur;
+                videoClipboard = padTimelineToDuration(
+                    sliceVideoTimeline(slide.videoTimeline, selectionStart, selectionEnd) || [],
+                    (sEnd - sStart) / sampleRate
+                );
+                slide.videoTimeline = cutVideoTimeline(slide.videoTimeline, selectionStart, cutEndForVideo);
+                await saveSlideTimeline(currentProjectId, slide.number, slide.videoTimeline, webcamState);
+            } else {
+                videoClipboard = null;
+            }
             for (let i = 0; i < xfadeLen; i++) {
                 const factor = i / xfadeLen;
                 const bIdx = before.length - xfadeLen + i;
@@ -4003,10 +4037,17 @@
             const insertTime = playheadPosition;
             playheadPosition = (sPos + inserted.length) / sampleRate;
 
-            // Splice video clipboard if present
+            // Splice the video timeline by exactly the pasted audio duration.
+            // If the clipboard carries camera clips, insert those; pad with a gap
+            // when they are shorter than the audio. If it carries none, insert a
+            // pure gap — otherwise every camera clip after the paste point shifts
+            // later and bleeds over un-filmed audio.
             const slide = slides[currentIndex];
-            if (slide && videoClipboard && videoClipboard.length > 0) {
-                slide.videoTimeline = insertVideoTimeline(slide.videoTimeline || [], insertTime, videoClipboard);
+            const pastedDur = inserted.length / sampleRate;
+            const hadTimeline = slide && slide.videoTimeline && slide.videoTimeline.length > 0;
+            if (slide && (hadTimeline || (videoClipboard && videoClipboard.length > 0))) {
+                const clipsToInsert = padTimelineToDuration(videoClipboard || [], pastedDur);
+                slide.videoTimeline = insertVideoTimeline(slide.videoTimeline || [], insertTime, clipsToInsert);
                 await saveSlideTimeline(currentProjectId, slide.number, slide.videoTimeline, webcamState);
             }
 
@@ -4042,6 +4083,13 @@
             slide.hasAudio = false;
             slide.audioDuration = 0;
             slide.audioBlob = null;
+            // The server's delete_audio removes every slide_NN* file, camera takes
+            // and timeline included, so drop the in-memory camera state too.
+            // Leaving it stale made the next recording inherit a timeline whose
+            // take files no longer exist.
+            slide.videoTimeline = [];
+            slide.hasVideo = false;
+            currentPlaybackVideoTakeId = null;
 
             if (isServerMode) {
                 try {

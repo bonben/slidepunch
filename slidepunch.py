@@ -30,6 +30,22 @@ def ensure_base_dirs():
     PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
     WEB_DIR.mkdir(parents=True, exist_ok=True)
 
+def probe_duration(media_path):
+    """Return the duration of a media file in seconds, or 0.0 if it can't be read.
+
+    A failed probe used to be swallowed silently, which surfaced later as wrong
+    slide timings and zero-length camera windows with no clue as to why.
+    """
+    try:
+        res = subprocess.run([
+            "ffprobe", "-v", "error", "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1", str(media_path)
+        ], capture_output=True, text=True, check=True)
+        return float(res.stdout.strip())
+    except Exception as e:
+        print(f"[SlidePunch] Could not read duration of {media_path}: {e}", file=sys.stderr)
+        return 0.0
+
 def safe_project_dir(project_id, create=False):
     """Resolve a project directory, refusing anything that escapes PROJECTS_DIR.
 
@@ -82,14 +98,7 @@ def get_all_projects():
             # Calculate total duration
             total_duration = 0.0
             for wav in recordings:
-                try:
-                    res = subprocess.run([
-                        "ffprobe", "-v", "error", "-show_entries", "format=duration",
-                        "-of", "default=noprint_wrappers=1:nokey=1", str(wav)
-                    ], capture_output=True, text=True, check=True)
-                    total_duration += float(res.stdout.strip())
-                except Exception:
-                    pass
+                total_duration += probe_duration(wav)
                     
             projects.append({
                 "id": p.name,
@@ -178,16 +187,7 @@ def parse_project_slides(project_id):
         wav_name = f"slide_{idx:02d}.wav"
         has_audio = (recordings_dir / wav_name).exists()
         
-        audio_duration = 0.0
-        if has_audio:
-            try:
-                res = subprocess.run([
-                    "ffprobe", "-v", "error", "-show_entries", "format=duration",
-                    "-of", "default=noprint_wrappers=1:nokey=1", str(recordings_dir / wav_name)
-                ], capture_output=True, text=True, check=True)
-                audio_duration = float(res.stdout.strip())
-            except Exception:
-                pass
+        audio_duration = probe_duration(recordings_dir / wav_name) if has_audio else 0.0
 
         timeline_file = recordings_dir / f"slide_{idx:02d}_timeline.json"
         video_timeline = []
@@ -219,7 +219,9 @@ def parse_project_slides(project_id):
             "hasAudio": has_audio,
             "audioUrl": f"/api/audio?project={project_id}&file={wav_name}" if has_audio else None,
             "audioDuration": audio_duration,
-            "hasVideo": len(video_timeline) > 0,
+            # A timeline made only of gaps (takeId null) means "no camera": it must
+            # not light up the camera badge or trigger playback of missing takes.
+            "hasVideo": any(c.get("takeId") for c in video_timeline),
             "videoTimeline": video_timeline,
             "webcamLayout": webcam_layout
         })
@@ -350,13 +352,21 @@ def render_project_video(project_id):
                 pass
         
         if not timeline_clips:
-            # Match latest recorded take for this slide if available
+            # Legacy projects recorded before timelines existed: assume the take
+            # covers the slide from the start. Bound it by the real audio length
+            # rather than a 9999 sentinel so the clip can never be positioned or
+            # stretched past the audio it belongs to.
+            # If the audio duration could not be probed, fall back to a window long
+            # enough to mean "until the take runs out" (overlay uses eof_action=pass,
+            # so the camera still stops at its own end) rather than 0, which would
+            # silently drop the camera entirely.
+            legacy_dur = float(s.get("audioDuration") or 0.0) or 86400.0
             takes = sorted((proj_dir / "recordings").glob(f"slide_{num:02d}_take_*.webm"), key=lambda p: p.stat().st_mtime)
             if takes:
                 t_id = takes[-1].stem.replace(f"slide_{num:02d}_", "")
-                timeline_clips = [{"takeId": t_id, "srcStart": 0, "srcEnd": 9999, "duration": 9999}]
+                timeline_clips = [{"takeId": t_id, "srcStart": 0, "srcEnd": legacy_dur, "duration": legacy_dur}]
             elif (proj_dir / "recordings" / f"slide_{num:02d}_cam.webm").exists():
-                timeline_clips = [{"takeId": "cam", "srcStart": 0, "srcEnd": 9999, "duration": 9999}]
+                timeline_clips = [{"takeId": "cam", "srcStart": 0, "srcEnd": legacy_dur, "duration": legacy_dur}]
                 
         # Calculate pixel dimensions (16:9 1080p canvas)
         w_px = max(120, min(1920, int(layout.get("sizePct", 0.28) * 1920)))
@@ -437,8 +447,12 @@ def render_project_video(project_id):
                 res = subprocess.run(cmd, capture_output=True)
                 if res.returncode != 0:
                     raise RuntimeError(res.stderr.decode('utf-8'))
-            except Exception:
-                # Fallback to still image
+            except Exception as e:
+                # Fallback to still image. Log it: silently dropping the camera
+                # here is indistinguishable, from the user's side, from the
+                # camera never having been recorded.
+                print(f"[SlidePunch] Slide {num}: camera overlay failed, "
+                      f"falling back to a still slide. Reason: {e}", file=sys.stderr)
                 cmd = [
                     "ffmpeg", "-y",
                     "-loop", "1", "-framerate", "30", "-i", str(img),
@@ -841,11 +855,7 @@ class SlidePunchHandler(SimpleHTTPRequestHandler):
                 ], check=True, capture_output=True)
                 if temp_input.exists(): temp_input.unlink()
                 
-                res = subprocess.run([
-                    "ffprobe", "-v", "error", "-show_entries", "format=duration",
-                    "-of", "default=noprint_wrappers=1:nokey=1", str(target_wav)
-                ], capture_output=True, text=True, check=True)
-                duration = float(res.stdout.strip())
+                duration = probe_duration(target_wav)
                 
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
