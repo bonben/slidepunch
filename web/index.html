@@ -3162,8 +3162,7 @@
             // cleared and paint the previous frame back. Apply the same rule as
             // the overlay — live camera, or playback sitting on filmed footage —
             // rather than the looser "this slide owns footage".
-            const live = webcamActive && !!webcamStream;
-            if (!live && !(isPlaying && hasCameraAtTime(slide, playheadPosition))) return;
+            if (!cameraShouldBeVisible()) return;
 
             const displayCanvas = document.getElementById('webcamDisplayCanvas');
             if (!displayCanvas) return;
@@ -3430,15 +3429,23 @@
             if (ctx) ctx.clearRect(0, 0, displayCanvas.width, displayCanvas.height);
         }
 
+        // The single rule for "should the camera be on screen right now". Both the
+        // overlay and the drawing code read it, so they cannot drift apart.
+        function cameraShouldBeVisible() {
+            const live = webcamActive && !!webcamStream;
+            const slide = slides[currentIndex];
+            if (isPlaying && slideHasCamera(slide)) {
+                return hasCameraAtTime(slide, playheadPosition);
+            }
+            return live;
+        }
+
         function updateWebcamOverlayVisibility() {
             const overlay = document.getElementById('webcamOverlay');
             if (!overlay) return false;
             const live = webcamActive && !!webcamStream;
-            // Only two reasons to be on screen: a running camera, or playback
-            // currently sitting on filmed footage. Merely owning a recording is
-            // not one — that left a frozen frame on screen once the camera was
-            // switched off.
-            const show = live || (isPlaying && hasCameraAtTime(slides[currentIndex], playheadPosition));
+            const slide = slides[currentIndex];
+            const show = cameraShouldBeVisible();
             overlay.style.display = show ? 'flex' : 'none';
             if (!show) clearWebcamDisplayCanvas();
             const camSelect = document.getElementById('cameraSelect');
