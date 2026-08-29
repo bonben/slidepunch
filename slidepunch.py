@@ -369,15 +369,20 @@ def render_project_video(project_id):
         
         timeline_clips = []
         layout = dict(global_layout)
-        
-        if timeline_file.exists():
+
+        # A timeline file, even holding an empty list, is a deliberate statement
+        # about this slide: an emptied timeline means the camera was removed. Only
+        # the absence of the file leaves room for the legacy guess below —
+        # otherwise removing the camera and exporting brought it straight back.
+        has_timeline_file = timeline_file.exists()
+        if has_timeline_file:
             try:
                 t_data = json.loads(timeline_file.read_text(encoding="utf-8"))
                 timeline_clips = t_data.get("timeline", [])
             except Exception:
-                pass
-        
-        if not timeline_clips:
+                has_timeline_file = False
+
+        if not timeline_clips and not has_timeline_file:
             # Legacy projects recorded before timelines existed: assume the take
             # covers the slide from the start. Bound it by the real audio length
             # rather than a 9999 sentinel so the clip can never be positioned or

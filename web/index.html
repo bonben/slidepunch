@@ -3392,7 +3392,10 @@
         // bring the overlay back.
         function slideHasCamera(slide) {
             if (!slide) return false;
-            if (slide.videoTimeline && slide.videoTimeline.length > 0) {
+            // A timeline that exists is authoritative, empty included: emptying it
+            // is how "the camera was removed" is expressed. Falling back to the
+            // hasVideo flag there resurrected the camera from a stale server value.
+            if (Array.isArray(slide.videoTimeline)) {
                 return slide.videoTimeline.some(c => !!c.takeId);
             }
             return !!slide.hasVideo;
@@ -3896,10 +3899,20 @@
                                 method: 'POST',
                                 body: recordedCamBlob
                             });
-                            await saveSlideTimeline(currentProjectId, slide.number, slide.videoTimeline, webcamState);
                         } catch (e) {
                             console.warn("Failed to upload slide webcam video:", e);
                         }
+                    }
+
+                    // 3. Persist the timeline on EVERY recording, not only when a
+                    // camera was filmed. Recording audio with the camera off
+                    // splices no-camera gaps into it; keeping those in memory only
+                    // meant the server still held the old full-camera timeline, so
+                    // the camera came back — frozen — over the re-recorded stretch
+                    // as soon as the slide was loaded again.
+                    if (Array.isArray(slide.videoTimeline)) {
+                        slide.hasVideo = slide.videoTimeline.some(c => !!c.takeId);
+                        await saveSlideTimeline(currentProjectId, slide.number, slide.videoTimeline, webcamState);
                     }
 
                     if (data.success) {
