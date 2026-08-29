@@ -4861,11 +4861,27 @@
 
                     const videoBlob = new Blob(chunks, { type: mimeType });
                     const videoUrl = URL.createObjectURL(videoBlob);
+                    // Name the file after what the browser actually encoded: asking
+                    // for mp4 is not a guarantee, MediaRecorder falls back to webm.
+                    const ext = mimeType.startsWith('video/mp4') ? 'mp4' : 'webm';
+                    // The button label names MP4; say WEBM when that is what came out.
+                    const dlLabel = t('downloadVideoBtn').replace(/MP4/i, ext.toUpperCase());
 
                     progressWrap.style.display = 'none';
                     closeBtn.style.display = 'block';
                     title.textContent = t('modalSuccessTitle');
-                    msg.innerHTML = t('modalSuccessMsg').replace('{url}', videoUrl);
+                    // Build the download link here rather than through modalSuccessMsg:
+                    // that string no longer carries a {url} placeholder, so the
+                    // generated video used to be produced and then silently dropped
+                    // with no way to save it.
+                    msg.innerHTML = `
+                        <div style="text-align:center; padding:15px 0;">
+                            <p style="font-size:1.05rem; color:var(--text-main); margin-bottom:20px;">${t('modalSuccessMsg')}</p>
+                            <a href="${videoUrl}" download="${currentProjectId}_presentation.${ext}" class="btn-primary" style="display:inline-flex; align-items:center; gap:8px; padding:14px 28px; font-size:1.1rem; text-decoration:none; border-radius:8px; font-weight:700; background:linear-gradient(135deg, #0284C7, #0369A1); color:#fff; box-shadow:0 4px 14px rgba(2,132,199,0.35);">
+                                ${dlLabel}
+                            </a>
+                        </div>
+                    `;
 
                 } catch (err) {
                     progressWrap.style.display = 'none';
