@@ -2201,7 +2201,9 @@
 
         function openIndexedDB() {
             return new Promise((resolve, reject) => {
-                const req = indexedDB.open('SlidePunchDB', 2);
+                // v3 adds the 'video' store: without it, camera takes recorded in
+                // browser mode had nowhere to live and were discarded on save.
+                const req = indexedDB.open('SlidePunchDB', 3);
                 req.onupgradeneeded = (e) => {
                     const database = e.target.result;
                     if (!database.objectStoreNames.contains('projects')) {
@@ -2212,6 +2214,9 @@
                     }
                     if (!database.objectStoreNames.contains('audio')) {
                         database.createObjectStore('audio', { keyPath: 'key' });
+                    }
+                    if (!database.objectStoreNames.contains('video')) {
+                        database.createObjectStore('video', { keyPath: 'key' });
                     }
                 };
                 req.onsuccess = (e) => {
@@ -2454,8 +2459,14 @@
                     } else {
                         s.hasAudio = false;
                     }
+                    // Restore the camera timeline stored with the slide, and make
+                    // the takes it references available as blob URLs before any
+                    // playback needs them.
+                    if (!Array.isArray(s.videoTimeline)) s.videoTimeline = [];
+                    s.hasVideo = s.videoTimeline.some(c => !!c.takeId);
                 }
                 slides = filtered;
+                for (const s of slides) await preloadSlideTakes(s);
             }
 
             if (slides.length > 0) {
@@ -3029,6 +3040,7 @@
 
         let isWebcamPlaybackActive = false;
         let currentPlaybackVideoTakeId = null;
+        let currentPlaybackVideoSrc = null;
 
         function getVideoClipAtTime(timeline, t) {
             if (!timeline || timeline.length === 0) return null;
@@ -3062,11 +3074,18 @@
             const playbackVid = document.getElementById('webcamPlaybackVideo');
             if (!playbackVid) return false;
 
-            const numStr = String(slide.number).padStart(2, '0');
-            const expectedSrc = `/api/slide_video?project=${currentProjectId}&file=slide_${numStr}_${clipInfo.takeId}.webm`;
+            // Server mode streams the take; browser mode plays it from IndexedDB.
+            const expectedSrc = takeSrcFor(slide.number, clipInfo.takeId);
+            // Not resolved yet (browser mode, still loading): show nothing rather
+            // than leaving the previous take's last frame on screen.
+            if (!expectedSrc) return false;
 
-            if (currentPlaybackVideoTakeId !== clipInfo.takeId || !playbackVid.src.includes(`file=slide_${numStr}_${clipInfo.takeId}.webm`)) {
+            // Compare against the src we last assigned, not playbackVid.src: the
+            // element reports an absolute URL, which never equals a relative
+            // /api/... path, and the source would be reassigned every frame.
+            if (currentPlaybackVideoTakeId !== clipInfo.takeId || currentPlaybackVideoSrc !== expectedSrc) {
                 currentPlaybackVideoTakeId = clipInfo.takeId;
+                currentPlaybackVideoSrc = expectedSrc;
                 playbackVid.src = expectedSrc;
                 playbackVid.currentTime = clipInfo.srcTime;
                 playbackVid.play().catch(() => {});
@@ -3120,6 +3139,7 @@
                 // Playback stopped -> restore live webcam
                 isWebcamPlaybackActive = false;
                 currentPlaybackVideoTakeId = null;
+                currentPlaybackVideoSrc = null;
                 const playbackVid = document.getElementById('webcamPlaybackVideo');
                 if (playbackVid) playbackVid.pause();
 
@@ -3410,6 +3430,89 @@
         // stream, or recorded footage on this slide. Showing it merely because
         // the camera was requested left the circle and its whole toolbar
         // floating over the slide with no picture behind them.
+        // ==========================================
+        // CAMERA TAKE STORAGE
+        // Server mode streams takes from /api/slide_video. Browser mode has no
+        // server, so takes live in IndexedDB and are handed to the <video> element
+        // as blob URLs. Everything above this layer works the same either way.
+        // ==========================================
+        const takeObjectUrls = {};   // key -> blob URL, cached for the session
+
+        function videoKey(projectId, slideNum, takeId) {
+            return `${projectId}_${slideNum}_${takeId}`;
+        }
+
+        async function putCameraTake(projectId, slideNum, takeId, blob) {
+            if (!db) return;
+            const key = videoKey(projectId, slideNum, takeId);
+            await new Promise((resolve, reject) => {
+                const tx = db.transaction(['video'], 'readwrite');
+                tx.objectStore('video').put({ key, blob, updatedAt: new Date().toISOString() });
+                tx.oncomplete = resolve;
+                tx.onerror = () => reject(tx.error);
+            });
+            if (takeObjectUrls[key]) URL.revokeObjectURL(takeObjectUrls[key]);
+            takeObjectUrls[key] = URL.createObjectURL(blob);
+        }
+
+        async function loadCameraTakeUrl(projectId, slideNum, takeId) {
+            const key = videoKey(projectId, slideNum, takeId);
+            if (takeObjectUrls[key]) return takeObjectUrls[key];
+            if (!db) return null;
+            const rec = await new Promise(r => {
+                const tx = db.transaction(['video'], 'readonly');
+                const req = tx.objectStore('video').get(key);
+                req.onsuccess = () => r(req.result);
+                req.onerror = () => r(null);
+            });
+            if (!rec || !rec.blob) return null;
+            takeObjectUrls[key] = URL.createObjectURL(rec.blob);
+            return takeObjectUrls[key];
+        }
+
+        // Resolve every take a slide references, so playback can stay synchronous.
+        async function preloadSlideTakes(slide) {
+            if (isServerMode || !slide || !Array.isArray(slide.videoTimeline)) return;
+            const ids = [...new Set(slide.videoTimeline.map(c => c.takeId).filter(Boolean))];
+            for (const id of ids) {
+                await loadCameraTakeUrl(currentProjectId, slide.number, id);
+            }
+        }
+
+        // The source for one take: an API URL on the server, a blob URL in the
+        // browser. Returns null when a browser-mode take has not been resolved
+        // yet, which keeps the camera hidden instead of showing a stale frame.
+        function takeSrcFor(slideNum, takeId) {
+            if (isServerMode) {
+                const numStr = String(slideNum).padStart(2, '0');
+                return `/api/slide_video?project=${currentProjectId}&file=slide_${numStr}_${takeId}.webm`;
+            }
+            return takeObjectUrls[videoKey(currentProjectId, slideNum, takeId)] || null;
+        }
+
+        async function deleteCameraTakesForSlide(projectId, slideNum) {
+            if (!db) return;
+            await new Promise(resolve => {
+                const tx = db.transaction(['video'], 'readwrite');
+                const store = tx.objectStore('video');
+                const req = store.getAllKeys();
+                req.onsuccess = () => {
+                    const prefix = `${projectId}_${slideNum}_`;
+                    (req.result || []).forEach(k => {
+                        if (typeof k === 'string' && k.startsWith(prefix)) {
+                            store.delete(k);
+                            if (takeObjectUrls[k]) {
+                                URL.revokeObjectURL(takeObjectUrls[k]);
+                                delete takeObjectUrls[k];
+                            }
+                        }
+                    });
+                };
+                tx.oncomplete = resolve;
+                tx.onerror = resolve;
+            });
+        }
+
         // Is there filmed footage at this exact point of the slide timeline?
         // Used per frame during playback so the camera appears and disappears
         // exactly where it was filmed, matching the exported video.
@@ -3958,6 +4061,22 @@
                     updatedAt: new Date().toISOString()
                 });
 
+                // Store the camera take and the timeline too. Browser mode used to
+                // drop the recorded blob entirely, so the timeline claimed footage
+                // that no longer existed anywhere and playback showed a frozen
+                // frame instead of the recording.
+                if (recordedCamBlob && takeId) {
+                    try {
+                        await putCameraTake(currentProjectId, slide.number, takeId, recordedCamBlob);
+                    } catch (e) {
+                        console.warn("Failed to store camera take:", e);
+                    }
+                }
+                if (Array.isArray(slide.videoTimeline)) {
+                    slide.hasVideo = slide.videoTimeline.some(c => !!c.takeId);
+                    await persistSlideRecord(slide);
+                }
+
                 slide.hasAudio = true;
                 slide.audioDuration = dur;
                 slide.audioBlob = blob;
@@ -3984,8 +4103,37 @@
         // VIDEO TIMELINE EDL ENGINE (NON-LINEAR SLICE / CUT / PASTE / PUNCH-IN)
         // ==========================================
 
+        // Write a slide's own record back to IndexedDB, merging into whatever is
+        // already stored so the fields the studio does not touch survive.
+        async function persistSlideRecord(slide) {
+            if (isServerMode || !db || !slide) return;
+            const key = `${currentProjectId}_${slide.number}`;
+            await new Promise(resolve => {
+                const tx = db.transaction(['slides'], 'readwrite');
+                const store = tx.objectStore('slides');
+                const req = store.get(key);
+                req.onsuccess = () => {
+                    const rec = req.result || { key, projectId: currentProjectId, number: slide.number };
+                    rec.videoTimeline = slide.videoTimeline || [];
+                    rec.webcamLayout = { ...webcamState };
+                    rec.hasVideo = (slide.videoTimeline || []).some(c => !!c.takeId);
+                    store.put(rec);
+                };
+                tx.oncomplete = resolve;
+                tx.onerror = resolve;
+            });
+        }
+
         async function saveSlideTimeline(projectId, slideNum, timeline, layout) {
-            if (!isServerMode || !projectId || !slideNum) return;
+            if (!projectId || !slideNum) return;
+            if (!isServerMode) {
+                // Browser mode keeps the timeline on the slide record. Without
+                // this, every timeline edit — punch-in gaps, cut, paste — lived
+                // only in memory and was lost on reload.
+                const slide = slides.find(s => s.number === slideNum);
+                if (slide) await persistSlideRecord(slide);
+                return;
+            }
             try {
                 await fetch(`/api/save_slide_timeline?project=${projectId}&slide=${slideNum}`, {
                     method: 'POST',
@@ -4343,6 +4491,10 @@
             } else {
                 const tx = db.transaction(['audio'], 'readwrite');
                 tx.objectStore('audio').delete(`${currentProjectId}_${slide.number}`);
+                // Match the server, whose delete_audio removes every slide_NN*
+                // file: drop the camera takes and the stored timeline as well.
+                await deleteCameraTakesForSlide(currentProjectId, slide.number);
+                await persistSlideRecord(slide);
             }
 
             drawWaveform();
@@ -4437,6 +4589,7 @@
 
             isWebcamPlaybackActive = false;
             currentPlaybackVideoTakeId = null;
+            currentPlaybackVideoSrc = null;
             const playbackVid = document.getElementById('webcamPlaybackVideo');
             if (playbackVid) {
                 playbackVid.pause();
@@ -4902,9 +5055,33 @@
                             img.src = s.image;
                         });
 
-                        vCtx.fillStyle = '#0F172A';
-                        vCtx.fillRect(0, 0, 1920, 1080);
-                        vCtx.drawImage(img, 0, 0, 1920, 1080);
+                        const drawSlide = () => {
+                            vCtx.fillStyle = '#0F172A';
+                            vCtx.fillRect(0, 0, 1920, 1080);
+                            vCtx.drawImage(img, 0, 0, 1920, 1080);
+                        };
+                        drawSlide();
+
+                        // Camera compositing. The slide used to be painted once and
+                        // the code then simply waited for the audio, so a recorded
+                        // camera never reached the exported file. Repaint every
+                        // frame instead, overlaying the take that the timeline puts
+                        // at the current instant — and nothing over its gaps, which
+                        // keeps the export identical to the preview.
+                        const camVid = await prepareExportCameraVideo(s);
+                        let camRaf = null;
+                        // The clock starts when the audio starts, not here:
+                        // decoding it takes time, and counting from before would
+                        // shift the camera ahead of the sound it belongs to.
+                        let startedAt = null;
+                        const paintLoop = () => {
+                            drawSlide();
+                            if (startedAt !== null) {
+                                drawExportCameraFrame(vCtx, s, camVid, (performance.now() - startedAt) / 1000);
+                            }
+                            camRaf = requestAnimationFrame(paintLoop);
+                        };
+                        if (camVid) camRaf = requestAnimationFrame(paintLoop);
 
                         if (s.hasAudio && s.audioBlob) {
                             const buffer = await audioContext.decodeAudioData(await s.audioBlob.arrayBuffer());
@@ -4912,11 +5089,19 @@
                             srcNode.buffer = buffer;
                             srcNode.connect(audioDest);
                             srcNode.start();
+                            startedAt = performance.now();
                             await new Promise(resolve => {
                                 srcNode.onended = resolve;
                             });
                         } else {
+                            startedAt = performance.now();
                             await new Promise(r => setTimeout(r, 2000));
+                        }
+
+                        if (camRaf) cancelAnimationFrame(camRaf);
+                        if (camVid) {
+                            camVid.pause();
+                            camVid.remove();
                         }
                     }
 
@@ -4954,6 +5139,68 @@
                     msg.textContent = "Client Video Export Error: " + err.message;
                 }
             }
+        }
+
+        // ==========================================
+        // CAMERA COMPOSITING FOR THE BROWSER EXPORT
+        // Mirrors what render_project_video does with ffmpeg: the take is cropped
+        // to a square, placed from the slide layout, and circle-masked when the
+        // shape asks for it. Background removal is deliberately left out, exactly
+        // as on the server, so both exports look the same.
+        // ==========================================
+        async function prepareExportCameraVideo(slide) {
+            if (!slideHasCamera(slide)) return null;
+            await preloadSlideTakes(slide);
+            const firstId = (slide.videoTimeline || []).map(c => c.takeId).find(Boolean);
+            if (!firstId || !takeSrcFor(slide.number, firstId)) return null;
+
+            const vid = document.createElement('video');
+            vid.muted = true;
+            vid.playsInline = true;
+            vid.style.display = 'none';
+            document.body.appendChild(vid);
+            vid.dataset.takeId = '';
+            return vid;
+        }
+
+        function drawExportCameraFrame(ctx, slide, camVid, t) {
+            if (!camVid) return;
+            const clip = getVideoClipAtTime(slide.videoTimeline || [], t);
+            if (!clip || !clip.takeId) return;          // gap: bare slide, like the server
+
+            const src = takeSrcFor(slide.number, clip.takeId);
+            if (!src) return;
+            if (camVid.dataset.takeId !== clip.takeId) {
+                camVid.dataset.takeId = clip.takeId;
+                camVid.src = src;
+                camVid.currentTime = clip.srcTime;
+                camVid.play().catch(() => {});
+            } else if (Math.abs(camVid.currentTime - clip.srcTime) > 0.25) {
+                camVid.currentTime = clip.srcTime;
+            }
+            if (camVid.readyState < 2) return;
+
+            const layout = slide.webcamLayout || webcamState;
+            const size = Math.max(120, Math.min(1920, Math.round((layout.sizePct || 0.28) * 1920)));
+            const x = Math.max(0, Math.min(1920 - size, Math.round((layout.xPct || 0.70) * 1920)));
+            const y = Math.max(0, Math.min(1080 - size, Math.round((layout.yPct || 0.65) * 1080)));
+
+            // Square centre crop of the source, matching ffmpeg's
+            // scale=…:force_original_aspect_ratio=increase,crop
+            const rawW = camVid.videoWidth || 640;
+            const rawH = camVid.videoHeight || 480;
+            const side = Math.min(rawW, rawH);
+            const sx = (rawW - side) / 2;
+            const sy = (rawH - side) / 2;
+
+            ctx.save();
+            if ((layout.shape || 'cutout') === 'circle') {
+                ctx.beginPath();
+                ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2);
+                ctx.clip();
+            }
+            ctx.drawImage(camVid, sx, sy, side, side, x, y, size, size);
+            ctx.restore();
         }
 
         // ==========================================
