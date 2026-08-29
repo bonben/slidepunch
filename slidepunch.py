@@ -758,6 +758,12 @@ class SlidePunchHandler(SimpleHTTPRequestHandler):
             if html_file.exists():
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
+                # The whole application is this one file. Without an explicit
+                # directive the browser caches it heuristically and keeps running
+                # yesterday's JavaScript after an update — server-side behaviour
+                # then looks fixed while the UI still misbehaves.
+                self.send_header("Cache-Control", "no-store, must-revalidate")
+                self.send_header("Pragma", "no-cache")
                 self.end_headers()
                 with open(html_file, "rb") as f:
                     self.wfile.write(f.read())

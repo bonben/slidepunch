@@ -3157,8 +3157,13 @@
 
         function onSelfieSegmentationResults(results) {
             const slide = slides[currentIndex];
-            const hasSlideVideo = slideHasCamera(slide);
-            if (!webcamActive && !(isPlaying && hasSlideVideo)) return;
+            // MediaPipe answers asynchronously, so a result issued just before the
+            // playhead entered a no-camera stretch can land after the canvas was
+            // cleared and paint the previous frame back. Apply the same rule as
+            // the overlay — live camera, or playback sitting on filmed footage —
+            // rather than the looser "this slide owns footage".
+            const live = webcamActive && !!webcamStream;
+            if (!live && !(isPlaying && hasCameraAtTime(slide, playheadPosition))) return;
 
             const displayCanvas = document.getElementById('webcamDisplayCanvas');
             if (!displayCanvas) return;
