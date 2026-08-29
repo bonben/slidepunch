@@ -2533,8 +2533,12 @@
             const textarea = document.getElementById('prompterScript');
             textarea.value = slide.script || '';
 
-            // Ensure webcam overlay displays unified project layout
-            if (updateWebcamOverlayVisibility()) {
+            // Ensure webcam overlay displays unified project layout. Visibility and
+            // readiness are separate concerns: the overlay may legitimately be
+            // hidden right now (camera off, not playing) while the slide still
+            // needs its layout and segmentation ready for playback.
+            updateWebcamOverlayVisibility();
+            if (webcamActive || slideHasCamera(slide)) {
                 updateWebcamOverlayDOM();
                 setupWebcamDragAndResize();
                 initMediaPipeSegmentation();
@@ -2922,8 +2926,9 @@
             if (videoEl) {
                 videoEl.srcObject = null;
             }
-            // Recompute rather than force-hide: the slide may still hold recorded
-            // footage that should stay visible for playback.
+            // Wipe the last live frame before recomputing, so switching the camera
+            // off takes it off screen immediately instead of freezing it there.
+            clearWebcamDisplayCanvas();
             updateWebcamOverlayVisibility();
         }
 
@@ -3091,6 +3096,10 @@
                 const isReady = renderWebcamPlaybackFrame(playheadPosition);
                 const playbackVid = document.getElementById('webcamPlaybackVideo');
 
+                // Re-evaluate every frame: the timeline can hold gaps, so the
+                // camera must vanish over them instead of leaving a frozen frame.
+                updateWebcamOverlayVisibility();
+
                 if (isReady && playbackVid && !playbackVid.paused && !playbackVid.ended) {
                     if (selfieSegmentation && !isWebcamProcessing) {
                         isWebcamProcessing = true;
@@ -3115,6 +3124,9 @@
                 if (playbackVid) playbackVid.pause();
 
                 if (!webcamActive) {
+                    // No live camera to fall back to: take the recorded frame off
+                    // screen rather than leaving it frozen in the circle.
+                    updateWebcamOverlayVisibility();
                     return;
                 }
             }
@@ -3391,12 +3403,36 @@
         // stream, or recorded footage on this slide. Showing it merely because
         // the camera was requested left the circle and its whole toolbar
         // floating over the slide with no picture behind them.
+        // Is there filmed footage at this exact point of the slide timeline?
+        // Used per frame during playback so the camera appears and disappears
+        // exactly where it was filmed, matching the exported video.
+        function hasCameraAtTime(slide, t) {
+            if (!slideHasCamera(slide)) return false;
+            const clip = getVideoClipAtTime(slide.videoTimeline || [], t);
+            return !!(clip && clip.takeId && clip.takeId !== 'gap');
+        }
+
+        // The display canvas keeps whatever was last drawn on it. Whenever no
+        // camera should be on screen it has to be wiped, otherwise the last live
+        // frame stays frozen in the circle.
+        function clearWebcamDisplayCanvas() {
+            const displayCanvas = document.getElementById('webcamDisplayCanvas');
+            if (!displayCanvas) return;
+            const ctx = displayCanvas.getContext('2d');
+            if (ctx) ctx.clearRect(0, 0, displayCanvas.width, displayCanvas.height);
+        }
+
         function updateWebcamOverlayVisibility() {
             const overlay = document.getElementById('webcamOverlay');
             if (!overlay) return false;
             const live = webcamActive && !!webcamStream;
-            const show = live || slideHasCamera(slides[currentIndex]);
+            // Only two reasons to be on screen: a running camera, or playback
+            // currently sitting on filmed footage. Merely owning a recording is
+            // not one — that left a frozen frame on screen once the camera was
+            // switched off.
+            const show = live || (isPlaying && hasCameraAtTime(slides[currentIndex], playheadPosition));
             overlay.style.display = show ? 'flex' : 'none';
+            if (!show) clearWebcamDisplayCanvas();
             const camSelect = document.getElementById('cameraSelect');
             if (camSelect) camSelect.style.display = live ? 'inline-block' : 'none';
             return show;
@@ -4380,6 +4416,9 @@
             if (playbackVid) {
                 playbackVid.pause();
             }
+            // Playback is over: drop the recorded frame unless a live camera is
+            // running, so nothing stays frozen on the slide.
+            updateWebcamOverlayVisibility();
         }
 
         function skipAudio(seconds) {
