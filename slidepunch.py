@@ -46,6 +46,32 @@ def probe_duration(media_path):
         print(f"[SlidePunch] Could not read duration of {media_path}: {e}", file=sys.stderr)
         return 0.0
 
+def write_camera_take(data, dest):
+    """Write a recorded camera take, repairing its container as it lands.
+
+    MediaRecorder emits WebM with no duration in the header, so the browser
+    reports duration = Infinity and seeking with currentTime becomes unreliable
+    — which is what made recorded camera playback erratic. Remuxing (-c copy,
+    no re-encode) writes a real duration. Falls back to the raw bytes if ffmpeg
+    is unavailable or the remux fails, so a recording is never lost.
+    """
+    tmp = dest.with_suffix(".raw.webm")
+    tmp.write_bytes(data)
+    try:
+        res = subprocess.run(
+            ["ffmpeg", "-y", "-v", "error", "-i", str(tmp), "-c", "copy", str(dest)],
+            capture_output=True)
+        if res.returncode != 0 or not dest.exists() or dest.stat().st_size == 0:
+            raise RuntimeError(res.stderr.decode("utf-8", "replace")[:300])
+    except Exception as e:
+        print(f"[SlidePunch] Camera take remux failed for {dest.name}, "
+              f"keeping the raw recording. Reason: {e}", file=sys.stderr)
+        shutil.copyfile(tmp, dest)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
+    return dest
+
 def safe_project_dir(project_id, create=False):
     """Resolve a project directory, refusing anything that escapes PROJECTS_DIR.
 
@@ -782,11 +808,9 @@ class SlidePunchHandler(SimpleHTTPRequestHandler):
             layout_file = rec_dir / f"slide_{slide_idx:02d}_layout.json"
             
             data = self.rfile.read(content_length)
-            with open(take_file, "wb") as f:
-                f.write(data)
+            write_camera_take(data, take_file)
             # Copy to main cam file for backward compatibility
-            with open(cam_file, "wb") as f:
-                f.write(data)
+            shutil.copyfile(take_file, cam_file)
                 
             layout = {
                 "xPct": x_pct,
