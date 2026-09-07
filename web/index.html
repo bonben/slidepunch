@@ -5199,7 +5199,9 @@
             const vid = document.createElement('video');
             vid.muted = true;
             vid.playsInline = true;
-            vid.style.display = 'none';
+            // Off screen rather than display:none, which can stop decode.
+            vid.style.cssText = 'position:fixed; left:-10000px; top:0; width:160px;'
+                              + ' height:120px; opacity:0; pointer-events:none; z-index:-1;';
             document.body.appendChild(vid);
             vid.dataset.takeId = '';
             return vid;
@@ -5334,6 +5336,12 @@
             vid.playsInline = true;
             vid.preload = 'auto';
             vid.src = src;
+            // Park it off screen rather than hiding it: the element must stay in
+            // the document to keep decoding frames for the canvas, but appending
+            // it as-is showed the camera full size behind the export dialog.
+            // display:none would risk the browser suspending decode entirely.
+            vid.style.cssText = 'position:fixed; left:-10000px; top:0; width:160px;'
+                              + ' height:120px; opacity:0; pointer-events:none; z-index:-1;';
             document.body.appendChild(vid);
             const ok = await new Promise(resolve => {
                 let settled = false;
@@ -5370,10 +5378,27 @@
                 plan.push({ slide: s, buffer, duration });
             }
 
+            // Count frames the same way they will be emitted — camera stretches at
+            // the full rate, motionless ones at the low rate — otherwise the
+            // progress bar drifts from what is really happening.
             let totalFrames = 0;
             for (const p of plan) {
-                const fps = slideHasCamera(p.slide) ? EXPORT_FPS_CAMERA : EXPORT_FPS_STATIC;
-                totalFrames += Math.max(1, Math.ceil(p.duration * fps));
+                const tl = slideHasCamera(p.slide) && Array.isArray(p.slide.videoTimeline)
+                    ? p.slide.videoTimeline : null;
+                if (!tl || !tl.length) {
+                    totalFrames += Math.max(1, Math.ceil(p.duration * EXPORT_FPS_STATIC));
+                    continue;
+                }
+                let cursor = 0;
+                for (const clip of tl) {
+                    const span = Math.max(0, Math.min(p.duration - cursor, clip.duration || 0));
+                    cursor += clip.duration || 0;
+                    if (span <= 0) continue;
+                    totalFrames += Math.ceil(span * (clip.takeId ? EXPORT_FPS_CAMERA : EXPORT_FPS_STATIC));
+                }
+                if (cursor < p.duration) {
+                    totalFrames += Math.ceil((p.duration - cursor) * EXPORT_FPS_STATIC);
+                }
             }
 
             const sampleRate = (plan.find(p => p.buffer) || {}).buffer?.sampleRate || 48000;
@@ -5443,13 +5468,8 @@
                 };
 
                 const hasCam = slideHasCamera(slide);
-                const fps = hasCam ? EXPORT_FPS_CAMERA : EXPORT_FPS_STATIC;
-                const frameCount = Math.max(1, Math.ceil(duration * fps));
                 const layout = slide.webcamLayout || webcamState;
 
-                // Camera takes are decoded by playing them faster than real time
-                // rather than seeking frame by frame, which is what keeps a filmed
-                // slide from costing its own duration.
                 const takeVideos = {};
                 if (hasCam) {
                     for (const id of [...new Set((slide.videoTimeline || []).map(c => c.takeId).filter(Boolean))]) {
@@ -5457,51 +5477,111 @@
                     }
                 }
 
-                let lastTakeId = null;
-                for (let i = 0; i < frameCount; i++) {
-                    const tLocal = i / fps;
-                    drawSlide();
-
-                    if (hasCam) {
-                        const clip = getVideoClipAtTime(slide.videoTimeline || [], tLocal);
-                        const vid = clip && clip.takeId ? takeVideos[clip.takeId] : null;
-                        if (vid) {
-                            if (lastTakeId !== clip.takeId) {
-                                lastTakeId = clip.takeId;
-                                vid.playbackRate = 8;
-                                await seekVideo(vid, clip.srcTime);
-                                vid.play().catch(() => {});
-                            } else if (vid.currentTime < clip.srcTime - 0.5 || vid.currentTime > clip.srcTime + 0.5) {
-                                await seekVideo(vid, clip.srcTime);   // drifted: realign
-                            } else {
-                                // Let playback carry us to the frame we need.
-                                let guard = 0;
-                                while (vid.currentTime < clip.srcTime && !vid.ended && guard++ < 40) {
-                                    await nextVideoFrame(vid);
-                                }
-                            }
-                            if (vid.readyState >= 2) drawCameraOnto(ctx, layout, vid);
-                        }
+                // Keep the encoder queue short. Frames are produced faster than
+                // 1080p encoding consumes them, and an unbounded queue grows until
+                // the tab dies, so wait for it to drain rather than pressing on.
+                const awaitEncoderRoom = async () => {
+                    let guard = 0;
+                    while (videoEncoder.encodeQueueSize > 8 && guard++ < 2000) {
+                        await new Promise(r => setTimeout(r, 4));
                     }
+                };
 
+                let keyCounter = 0;
+                const emit = async (tLocal, fps) => {
+                    await awaitEncoderRoom();
                     const frame = new VideoFrame(canvas, {
                         timestamp: Math.round((timeCursor + tLocal) * 1e6),
                         duration: Math.round(1e6 / fps)
                     });
-                    videoEncoder.encode(frame, { keyFrame: i % (fps * 2) === 0 });
+                    videoEncoder.encode(frame, { keyFrame: keyCounter % 60 === 0 });
                     frame.close();
-
+                    keyCounter++;
                     framesDone++;
                     if (framesDone % 10 === 0) {
-                        // Keep the encoder queue bounded so memory stays flat.
-                        if (videoEncoder.encodeQueueSize > 30) {
-                            await new Promise(r => setTimeout(r, 8));
-                        }
                         const elapsed = (performance.now() - startedAt) / 1000;
                         const rate = framesDone / Math.max(elapsed, 0.001);
                         report(framesDone, totalFrames, (totalFrames - framesDone) / Math.max(rate, 0.001));
                     }
                     if (encodeError) throw encodeError;
+                };
+
+                // Walk the slide clip by clip rather than output frame by output
+                // frame. A camera clip is consumed by following the frames the
+                // video actually decodes while it plays fast, and emitting the
+                // output frames each decoded frame covers. Driving it the other
+                // way round — asking for one source position per output frame —
+                // made playback run ahead of consumption and re-seek constantly,
+                // which stalled the export a few percent in.
+                const clips = hasCam && Array.isArray(slide.videoTimeline) && slide.videoTimeline.length
+                    ? slide.videoTimeline
+                    : [{ takeId: null, srcStart: 0, srcEnd: duration, duration: duration }];
+
+                let outCursor = 0;
+                for (const clip of clips) {
+                    const clipDur = Math.max(0, clip.duration || 0);
+                    const outStart = outCursor;
+                    const outEnd = Math.min(duration, outCursor + clipDur);
+                    outCursor += clipDur;
+                    if (outEnd <= outStart) continue;
+
+                    const vid = clip.takeId ? takeVideos[clip.takeId] : null;
+
+                    if (!vid) {
+                        // No camera here: a motionless slide needs few frames.
+                        const step = 1 / EXPORT_FPS_STATIC;
+                        drawSlide();
+                        for (let t = outStart; t < outEnd - 1e-6; t += step) {
+                            await emit(t, EXPORT_FPS_STATIC);
+                        }
+                        continue;
+                    }
+
+                    const fps = EXPORT_FPS_CAMERA;
+                    const step = 1 / fps;
+                    let nextOut = outStart;
+
+                    vid.playbackRate = 8;
+                    await seekVideo(vid, clip.srcStart || 0);
+                    try { await vid.play(); } catch (e) { /* decoded frames still arrive */ }
+
+                    let guard = 0;
+                    while (nextOut < outEnd - 1e-6 && guard++ < 20000) {
+                        await nextVideoFrame(vid);
+                        const media = vid.currentTime;
+                        let emitted = 0;
+                        while (nextOut < outEnd - 1e-6
+                               && (clip.srcStart || 0) + (nextOut - outStart) <= media
+                               && emitted++ < 400) {
+                            drawSlide();
+                            drawCameraOnto(ctx, layout, vid);
+                            await emit(nextOut, fps);
+                            nextOut += step;
+                        }
+                        if (vid.ended) break;
+                    }
+                    vid.pause();
+
+                    // The take ran out before the audio did: finish on the bare
+                    // slide, which is what the preview and the server both show.
+                    if (nextOut < outEnd - 1e-6) {
+                        drawSlide();
+                        for (let t = nextOut; t < outEnd - 1e-6; t += step) {
+                            await emit(t, fps);
+                        }
+                    }
+                }
+
+                // The camera timeline can be shorter than the slide's audio — a
+                // stretch recorded with the camera off, for instance. Cover the
+                // remainder with the bare slide so the video keeps pace with the
+                // sound instead of ending early and freezing.
+                if (outCursor < duration - 1e-6) {
+                    const step = 1 / EXPORT_FPS_STATIC;
+                    drawSlide();
+                    for (let t = Math.max(0, outCursor); t < duration - 1e-6; t += step) {
+                        await emit(t, EXPORT_FPS_STATIC);
+                    }
                 }
 
                 Object.values(takeVideos).forEach(v => { if (v) { v.pause(); v.remove(); } });
