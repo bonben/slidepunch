@@ -11,6 +11,8 @@
     <!-- Client-Side Libraries for GitHub Pages / Web Mode -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <!-- MP4 muxer: lets the WebCodecs export write a real MP4 instead of the WebM MediaRecorder produces -->
+    <script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.1/build/mp4-muxer.min.js"></script>
     <!-- MediaPipe Selfie Segmentation for AI Background Removal -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1.1675465747/selfie_segmentation.js" crossorigin="anonymous"></script>
@@ -5015,6 +5017,46 @@
                     title.textContent = t('modalErrorTitle');
                     msg.textContent = err.message;
                 }
+            } else if (webCodecsExportAvailable()) {
+                // Fast path: encode a real MP4 without replaying the presentation.
+                try {
+                    const fmtEta = secs => {
+                        if (!isFinite(secs) || secs < 0) return '';
+                        const m = Math.floor(secs / 60), s = Math.round(secs % 60);
+                        return m > 0 ? `${m} min ${s}s` : `${s}s`;
+                    };
+                    const blob = await exportVideoWebCodecs((done, total, etaSecs) => {
+                        const pct = Math.min(100, Math.round((done / total) * 100));
+                        progressBar.style.width = `${pct}%`;
+                        const eta = fmtEta(etaSecs);
+                        msg.innerHTML = `<span style="font-size:1.15rem; font-weight:800; color:var(--brand-navy);">${pct}%</span>`
+                            + `<br><span style="color:var(--text-muted); font-size:0.85rem;">`
+                            + `${done.toLocaleString()} / ${total.toLocaleString()} images`
+                            + (eta && pct < 100 ? ` · ${currentLang === 'fr' ? 'reste environ' : 'about'} ${eta}` : '')
+                            + `</span>`;
+                    });
+
+                    const videoUrl = URL.createObjectURL(blob);
+                    const mb = (blob.size / (1024 * 1024)).toFixed(1);
+                    progressWrap.style.display = 'none';
+                    closeBtn.style.display = 'block';
+                    title.textContent = t('modalSuccessTitle');
+                    msg.innerHTML = `
+                        <div style="text-align:center; padding:15px 0;">
+                            <p style="font-size:1.05rem; color:var(--text-main); margin-bottom:6px;">${t('modalSuccessMsg')}</p>
+                            <p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:20px;">MP4 · ${mb} Mo</p>
+                            <a href="${videoUrl}" download="${currentProjectId}_presentation.mp4" class="btn-primary" style="display:inline-flex; align-items:center; gap:8px; padding:14px 28px; font-size:1.1rem; text-decoration:none; border-radius:8px; font-weight:700; background:linear-gradient(135deg, #0284C7, #0369A1); color:#fff; box-shadow:0 4px 14px rgba(2,132,199,0.35);">
+                                ${t('downloadVideoBtn')}
+                            </a>
+                        </div>
+                    `;
+                } catch (err) {
+                    console.error("WebCodecs export failed:", err);
+                    progressWrap.style.display = 'none';
+                    closeBtn.style.display = 'block';
+                    title.textContent = t('modalErrorTitle');
+                    msg.textContent = "Export MP4 : " + err.message;
+                }
             } else {
                 try {
                     ensureAudioContext();
@@ -5180,15 +5222,21 @@
             }
             if (camVid.readyState < 2) return;
 
-            const layout = slide.webcamLayout || webcamState;
+            drawCameraOnto(ctx, slide.webcamLayout || webcamState, camVid);
+        }
+
+        // Paint one camera frame onto a 1920x1080 context, positioned and masked
+        // from the slide layout. Same geometry as the server: square centre crop
+        // (ffmpeg's force_original_aspect_ratio=increase + crop) and a circular
+        // mask only when the shape asks for one.
+        function drawCameraOnto(ctx, layout, source) {
+            if (!source) return;
             const size = Math.max(120, Math.min(1920, Math.round((layout.sizePct || 0.28) * 1920)));
             const x = Math.max(0, Math.min(1920 - size, Math.round((layout.xPct || 0.70) * 1920)));
             const y = Math.max(0, Math.min(1080 - size, Math.round((layout.yPct || 0.65) * 1080)));
 
-            // Square centre crop of the source, matching ffmpeg's
-            // scale=…:force_original_aspect_ratio=increase,crop
-            const rawW = camVid.videoWidth || 640;
-            const rawH = camVid.videoHeight || 480;
+            const rawW = source.videoWidth || source.width || 640;
+            const rawH = source.videoHeight || source.height || 480;
             const side = Math.min(rawW, rawH);
             const sx = (rawW - side) / 2;
             const sy = (rawH - side) / 2;
@@ -5199,8 +5247,275 @@
                 ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2);
                 ctx.clip();
             }
-            ctx.drawImage(camVid, sx, sy, side, side, x, y, size, size);
+            ctx.drawImage(source, sx, sy, side, side, x, y, size, size);
             ctx.restore();
+        }
+
+        // ==========================================
+        // WEBCODECS EXPORT — real MP4, encoded as fast as the machine allows
+        //
+        // The MediaRecorder path below replays the whole presentation to film it,
+        // so exporting a 30 minute talk takes 30 minutes and yields WebM. Here the
+        // frames are encoded directly and the audio is encoded from its samples
+        // without ever being played, which removes the real-time floor entirely.
+        // Slides with no camera cost almost nothing; only camera stretches need
+        // their source decoded, and that runs at several times normal speed.
+        // ==========================================
+        const EXPORT_W = 1920, EXPORT_H = 1080;
+        const EXPORT_FPS_CAMERA = 30;   // smooth for a moving face
+        const EXPORT_FPS_STATIC = 6;    // a motionless slide needs no more
+
+        function webCodecsExportAvailable() {
+            return typeof VideoEncoder !== 'undefined'
+                && typeof AudioEncoder !== 'undefined'
+                && typeof VideoFrame !== 'undefined'
+                && typeof AudioData !== 'undefined'
+                && typeof window.Mp4Muxer !== 'undefined';
+        }
+
+        async function pickH264Codec() {
+            // From most to least capable; 1080p needs level 4.0.
+            const candidates = ['avc1.640028', 'avc1.4d0028', 'avc1.42002a', 'avc1.42001f'];
+            for (const codec of candidates) {
+                try {
+                    const res = await VideoEncoder.isConfigSupported({
+                        codec, width: EXPORT_W, height: EXPORT_H,
+                        bitrate: 8_000_000, framerate: EXPORT_FPS_CAMERA
+                    });
+                    if (res && res.supported) return codec;
+                } catch (e) { /* try the next one */ }
+            }
+            return null;
+        }
+
+        // AAC encoding is absent from several Chromium builds (Linux especially).
+        // Ask before configuring: configure() accepts the codec there and only
+        // fails later, mid-export, with "Unsupported codec type". Opus in MP4 is
+        // the fallback — valid, and played by Chrome, VLC and ffmpeg, though some
+        // older players expect AAC.
+        async function pickAudioCodec(sampleRate) {
+            const candidates = [
+                { webCodec: 'mp4a.40.2', muxerCodec: 'aac', bitrate: 192_000, label: 'AAC' },
+                { webCodec: 'opus', muxerCodec: 'opus', bitrate: 128_000, label: 'Opus' }
+            ];
+            for (const c of candidates) {
+                try {
+                    const res = await AudioEncoder.isConfigSupported({
+                        codec: c.webCodec, sampleRate, numberOfChannels: 1, bitrate: c.bitrate
+                    });
+                    if (res && res.supported) return c;
+                } catch (e) { /* try the next one */ }
+            }
+            return null;
+        }
+
+        // Wait for the next decoded frame of a playing video.
+        function nextVideoFrame(vid) {
+            return new Promise(resolve => {
+                if (vid.requestVideoFrameCallback) vid.requestVideoFrameCallback(() => resolve());
+                else setTimeout(resolve, 1000 / EXPORT_FPS_CAMERA);
+            });
+        }
+
+        function seekVideo(vid, time) {
+            return new Promise(resolve => {
+                const done = () => { vid.removeEventListener('seeked', done); resolve(); };
+                vid.addEventListener('seeked', done);
+                vid.currentTime = time;
+                setTimeout(done, 2000);   // never hang the export on a stubborn seek
+            });
+        }
+
+        async function loadTakeVideo(slideNum, takeId) {
+            const src = takeSrcFor(slideNum, takeId);
+            if (!src) return null;
+            const vid = document.createElement('video');
+            vid.muted = true;
+            vid.playsInline = true;
+            vid.preload = 'auto';
+            vid.src = src;
+            document.body.appendChild(vid);
+            const ok = await new Promise(resolve => {
+                let settled = false;
+                const finish = v => { if (!settled) { settled = true; resolve(v); } };
+                vid.onloadeddata = () => finish(true);
+                vid.onerror = () => finish(false);
+                setTimeout(() => finish(vid.readyState >= 2), 8000);
+            });
+            if (!ok) { vid.remove(); return null; }
+            // MediaRecorder writes no duration, which leaves duration as Infinity
+            // and makes seeking unreliable. Forcing a seek far past the end makes
+            // the browser scan the file and settle on the real duration.
+            if (!isFinite(vid.duration)) {
+                await seekVideo(vid, 1e6);
+                await seekVideo(vid, 0);
+            }
+            return vid;
+        }
+
+        async function exportVideoWebCodecs(report) {
+            const codec = await pickH264Codec();
+            if (!codec) throw new Error("H.264 encoding is not available in this browser");
+
+            // Decode every slide's audio first: it gives the exact durations the
+            // video timeline must match, and the total frame count for progress.
+            ensureAudioContext();
+            const plan = [];
+            for (const s of slides) {
+                let buffer = null;
+                if (s.hasAudio && s.audioBlob) {
+                    buffer = await audioContext.decodeAudioData(await s.audioBlob.arrayBuffer());
+                }
+                const duration = buffer ? buffer.duration : 2.0;
+                plan.push({ slide: s, buffer, duration });
+            }
+
+            let totalFrames = 0;
+            for (const p of plan) {
+                const fps = slideHasCamera(p.slide) ? EXPORT_FPS_CAMERA : EXPORT_FPS_STATIC;
+                totalFrames += Math.max(1, Math.ceil(p.duration * fps));
+            }
+
+            const sampleRate = (plan.find(p => p.buffer) || {}).buffer?.sampleRate || 48000;
+            const audioCodec = await pickAudioCodec(sampleRate);
+            if (!audioCodec) throw new Error("No audio encoder available in this browser");
+            const muxer = new Mp4Muxer.Muxer({
+                target: new Mp4Muxer.ArrayBufferTarget(),
+                video: { codec: 'avc', width: EXPORT_W, height: EXPORT_H },
+                audio: { codec: audioCodec.muxerCodec, sampleRate, numberOfChannels: 1 },
+                fastStart: 'in-memory'      // seekable file, playable everywhere
+            });
+
+            let encodeError = null;
+            const videoEncoder = new VideoEncoder({
+                output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+                error: e => { encodeError = e; }
+            });
+            videoEncoder.configure({
+                codec, width: EXPORT_W, height: EXPORT_H,
+                bitrate: 8_000_000, framerate: EXPORT_FPS_CAMERA
+            });
+            const audioEncoder = new AudioEncoder({
+                output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
+                error: e => { encodeError = e; }
+            });
+            audioEncoder.configure({
+                codec: audioCodec.webCodec, sampleRate, numberOfChannels: 1, bitrate: audioCodec.bitrate
+            });
+
+            const canvas = document.createElement('canvas');
+            canvas.width = EXPORT_W; canvas.height = EXPORT_H;
+            const ctx = canvas.getContext('2d', { alpha: false });
+
+            let framesDone = 0;
+            let timeCursor = 0;          // seconds, start of the current slide
+            const startedAt = performance.now();
+
+            for (const { slide, buffer, duration } of plan) {
+                // --- audio: encoded from the samples, never played ---
+                if (buffer) {
+                    const data = buffer.getChannelData(0);
+                    const CHUNK = 4096;
+                    for (let off = 0; off < data.length; off += CHUNK) {
+                        const len = Math.min(CHUNK, data.length - off);
+                        audioEncoder.encode(new AudioData({
+                            format: 'f32-planar',
+                            sampleRate,
+                            numberOfFrames: len,
+                            numberOfChannels: 1,
+                            timestamp: Math.round((timeCursor + off / sampleRate) * 1e6),
+                            data: data.slice(off, off + len)
+                        }));
+                    }
+                }
+
+                // --- video ---
+                const img = await new Promise((resolve, reject) => {
+                    const im = new Image();
+                    im.onload = () => resolve(im);
+                    im.onerror = reject;
+                    im.src = slide.image;
+                });
+                const drawSlide = () => {
+                    ctx.fillStyle = '#0F172A';
+                    ctx.fillRect(0, 0, EXPORT_W, EXPORT_H);
+                    ctx.drawImage(img, 0, 0, EXPORT_W, EXPORT_H);
+                };
+
+                const hasCam = slideHasCamera(slide);
+                const fps = hasCam ? EXPORT_FPS_CAMERA : EXPORT_FPS_STATIC;
+                const frameCount = Math.max(1, Math.ceil(duration * fps));
+                const layout = slide.webcamLayout || webcamState;
+
+                // Camera takes are decoded by playing them faster than real time
+                // rather than seeking frame by frame, which is what keeps a filmed
+                // slide from costing its own duration.
+                const takeVideos = {};
+                if (hasCam) {
+                    for (const id of [...new Set((slide.videoTimeline || []).map(c => c.takeId).filter(Boolean))]) {
+                        takeVideos[id] = await loadTakeVideo(slide.number, id);
+                    }
+                }
+
+                let lastTakeId = null;
+                for (let i = 0; i < frameCount; i++) {
+                    const tLocal = i / fps;
+                    drawSlide();
+
+                    if (hasCam) {
+                        const clip = getVideoClipAtTime(slide.videoTimeline || [], tLocal);
+                        const vid = clip && clip.takeId ? takeVideos[clip.takeId] : null;
+                        if (vid) {
+                            if (lastTakeId !== clip.takeId) {
+                                lastTakeId = clip.takeId;
+                                vid.playbackRate = 8;
+                                await seekVideo(vid, clip.srcTime);
+                                vid.play().catch(() => {});
+                            } else if (vid.currentTime < clip.srcTime - 0.5 || vid.currentTime > clip.srcTime + 0.5) {
+                                await seekVideo(vid, clip.srcTime);   // drifted: realign
+                            } else {
+                                // Let playback carry us to the frame we need.
+                                let guard = 0;
+                                while (vid.currentTime < clip.srcTime && !vid.ended && guard++ < 40) {
+                                    await nextVideoFrame(vid);
+                                }
+                            }
+                            if (vid.readyState >= 2) drawCameraOnto(ctx, layout, vid);
+                        }
+                    }
+
+                    const frame = new VideoFrame(canvas, {
+                        timestamp: Math.round((timeCursor + tLocal) * 1e6),
+                        duration: Math.round(1e6 / fps)
+                    });
+                    videoEncoder.encode(frame, { keyFrame: i % (fps * 2) === 0 });
+                    frame.close();
+
+                    framesDone++;
+                    if (framesDone % 10 === 0) {
+                        // Keep the encoder queue bounded so memory stays flat.
+                        if (videoEncoder.encodeQueueSize > 30) {
+                            await new Promise(r => setTimeout(r, 8));
+                        }
+                        const elapsed = (performance.now() - startedAt) / 1000;
+                        const rate = framesDone / Math.max(elapsed, 0.001);
+                        report(framesDone, totalFrames, (totalFrames - framesDone) / Math.max(rate, 0.001));
+                    }
+                    if (encodeError) throw encodeError;
+                }
+
+                Object.values(takeVideos).forEach(v => { if (v) { v.pause(); v.remove(); } });
+                timeCursor += duration;
+            }
+
+            report(totalFrames, totalFrames, 0);
+            await videoEncoder.flush();
+            await audioEncoder.flush();
+            muxer.finalize();
+            if (encodeError) throw encodeError;
+            const out = new Blob([muxer.target.buffer], { type: 'video/mp4' });
+            out.audioCodecLabel = audioCodec.label;
+            return out;
         }
 
         // ==========================================
