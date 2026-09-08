@@ -21,7 +21,7 @@ sinon mode navigateur.
 
 | | Mode serveur | Mode navigateur |
 |---|---|---|
-| Lancement | `python3 slidepunch.py` → :8080 | `python3 -m http.server 8081 --directory web` |
+| Lancement | `python3 slidepunch.py` → :8080 | `python3 serve_static.py` → :8081 |
 | Stockage | dossier `projects/` | IndexedDB (`SlidePunchDB`) |
 | Diapos PDF | `pdftoppm` | PDF.js |
 | Export vidéo | `ffmpeg` | canvas + `MediaRecorder` |
@@ -44,11 +44,15 @@ Chaque diapo porte une `videoTimeline` : une suite de clips couvrant
 ## Pièges rencontrés
 
 - `MediaRecorder` produit du WebM **sans durée** dans l'entête → `duration`
-  vaut `Infinity` et les `currentTime` deviennent hasardeux. Le serveur remuxe
-  (`ffmpeg -c copy`) à l'upload ; le mode navigateur n'a pas d'équivalent.
-- `index.html` est servi avec `Cache-Control: no-store` : toute l'application
-  tient dans ce fichier, et le cache navigateur a déjà fait croire à des bugs
-  déjà corrigés.
+  vaut `Infinity` et les `currentTime` deviennent hasardeux : la prise se fige
+  sur une image. Le serveur remuxe (`ffmpeg -c copy`) à l'upload. Côté
+  navigateur, `makeVideoSeekable()` force le navigateur à scanner le fichier
+  une fois (saut très au-delà de la fin) avant tout repositionnement — à
+  appeler sur **chaque** élément `<video>` qui charge une prise.
+- `index.html` est servi avec `Cache-Control: no-store` par les **deux**
+  serveurs : toute l'application tient dans ce fichier, et le cache navigateur
+  a déjà fait croire à des bugs déjà corrigés. Ne pas revenir à
+  `python -m http.server`, qui n'envoie aucune directive de cache.
 - Les chemins de projet/fichier venant des paramètres d'URL sont validés
   (`safe_project_dir`, `safe_child`) — la version pré-caméra sur `main` n'a
   **pas** ces garde-fous.

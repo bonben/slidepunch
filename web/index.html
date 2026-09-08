@@ -3043,6 +3043,7 @@
         let isWebcamPlaybackActive = false;
         let currentPlaybackVideoTakeId = null;
         let currentPlaybackVideoSrc = null;
+        let playbackVideoSeekable = false;   // the take's duration has been settled
 
         function getVideoClipAtTime(timeline, t) {
             if (!timeline || timeline.length === 0) return null;
@@ -3088,16 +3089,31 @@
             if (currentPlaybackVideoTakeId !== clipInfo.takeId || currentPlaybackVideoSrc !== expectedSrc) {
                 currentPlaybackVideoTakeId = clipInfo.takeId;
                 currentPlaybackVideoSrc = expectedSrc;
+                playbackVideoSeekable = false;
                 playbackVid.src = expectedSrc;
+                const pendingSrc = expectedSrc;
+                const wantedTime = clipInfo.srcTime;
+                // Teach the element the file's real duration before asking it to
+                // move anywhere, otherwise every later seek is a no-op and the
+                // take freezes on its first frame.
+                makeVideoSeekable(playbackVid).then(() => {
+                    if (currentPlaybackVideoSrc !== pendingSrc) return;   // moved on
+                    playbackVideoSeekable = true;
+                    try { playbackVid.currentTime = wantedTime; } catch (e) {}
+                    if (isPlaying) playbackVid.play().catch(() => {});
+                });
+                // Nothing to show until the scan is done: better a blank moment
+                // than a frame frozen at the wrong place.
+                return false;
+            }
+
+            if (!playbackVideoSeekable) return false;
+
+            if (Math.abs(playbackVid.currentTime - clipInfo.srcTime) > 0.25) {
                 playbackVid.currentTime = clipInfo.srcTime;
+            }
+            if (playbackVid.paused && isPlaying) {
                 playbackVid.play().catch(() => {});
-            } else {
-                if (Math.abs(playbackVid.currentTime - clipInfo.srcTime) > 0.25) {
-                    playbackVid.currentTime = clipInfo.srcTime;
-                }
-                if (playbackVid.paused && isPlaying) {
-                    playbackVid.play().catch(() => {});
-                }
             }
 
             return playbackVid.readyState >= 2;
@@ -3142,6 +3158,7 @@
                 isWebcamPlaybackActive = false;
                 currentPlaybackVideoTakeId = null;
                 currentPlaybackVideoSrc = null;
+                playbackVideoSeekable = false;
                 const playbackVid = document.getElementById('webcamPlaybackVideo');
                 if (playbackVid) playbackVid.pause();
 
@@ -4592,6 +4609,7 @@
             isWebcamPlaybackActive = false;
             currentPlaybackVideoTakeId = null;
             currentPlaybackVideoSrc = null;
+            playbackVideoSeekable = false;
             const playbackVid = document.getElementById('webcamPlaybackVideo');
             if (playbackVid) {
                 playbackVid.pause();
@@ -5319,6 +5337,32 @@
             });
         }
 
+        // MediaRecorder writes WebM with no duration in the header, so the element
+        // reports duration = Infinity and setting currentTime does nothing useful:
+        // the take stops advancing and stays frozen on one frame. Seeking far past
+        // the end once makes the browser scan the file and settle on the real
+        // duration, after which seeking behaves. The server repairs its takes with
+        // ffmpeg on upload; in the browser this is the only lever available.
+        function makeVideoSeekable(el) {
+            if (isFinite(el.duration) && el.duration > 0) return Promise.resolve();
+            return new Promise(resolve => {
+                let settled = false;
+                const finish = () => {
+                    if (settled) return;
+                    settled = true;
+                    el.removeEventListener('durationchange', onDuration);
+                    const back = () => { el.removeEventListener('seeked', back); resolve(); };
+                    el.addEventListener('seeked', back);
+                    try { el.currentTime = 0; } catch (e) { resolve(); }
+                    setTimeout(() => { el.removeEventListener('seeked', back); resolve(); }, 3000);
+                };
+                const onDuration = () => { if (isFinite(el.duration)) finish(); };
+                el.addEventListener('durationchange', onDuration);
+                try { el.currentTime = 1e6; } catch (e) { finish(); }
+                setTimeout(finish, 3000);
+            });
+        }
+
         function seekVideo(vid, time) {
             return new Promise(resolve => {
                 const done = () => { vid.removeEventListener('seeked', done); resolve(); };
@@ -5351,13 +5395,8 @@
                 setTimeout(() => finish(vid.readyState >= 2), 8000);
             });
             if (!ok) { vid.remove(); return null; }
-            // MediaRecorder writes no duration, which leaves duration as Infinity
-            // and makes seeking unreliable. Forcing a seek far past the end makes
-            // the browser scan the file and settle on the real duration.
-            if (!isFinite(vid.duration)) {
-                await seekVideo(vid, 1e6);
-                await seekVideo(vid, 0);
-            }
+            // Settle the real duration before any seeking (see makeVideoSeekable).
+            await makeVideoSeekable(vid);
             return vid;
         }
 
