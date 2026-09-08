@@ -11,6 +11,11 @@
     <!-- Client-Side Libraries for GitHub Pages / Web Mode -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <!-- MP4 muxer: lets the WebCodecs export write a real MP4 instead of the WebM MediaRecorder produces -->
+    <script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.1/build/mp4-muxer.min.js"></script>
+    <!-- MediaPipe Selfie Segmentation for AI Background Removal -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1.1675465747/selfie_segmentation.js" crossorigin="anonymous"></script>
 
     <style>
         :root {
@@ -43,6 +48,12 @@
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            opacity: 0;
+            transition: opacity 0.12s ease;
+        }
+
+        body.ready {
+            opacity: 1;
         }
 
         /* Top Header */
@@ -82,22 +93,6 @@
             padding: 2px 8px;
             border-radius: 999px;
             font-weight: 600;
-        }
-
-        .mode-badge {
-            background: rgba(16, 185, 129, 0.15);
-            border: 1px solid #10B981;
-            color: #34D399;
-            font-size: 0.68rem;
-            padding: 2px 8px;
-            border-radius: 999px;
-            font-weight: 600;
-        }
-
-        .mode-badge.web-mode {
-            background: rgba(14, 165, 233, 0.15);
-            border-color: #0284C7;
-            color: #38BDF8;
         }
 
         /* Project Selector in Header */
@@ -548,20 +543,22 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            padding: 16px;
+            padding: 32px 20px;
             background: #E2E8F0;
             position: relative;
-            overflow: hidden;
+            overflow: visible;
+            z-index: 10;
         }
 
         .slide-img-container {
+            position: relative;
             width: 100%;
             max-width: 880px;
             aspect-ratio: 16/9;
             background: white;
             border-radius: 8px;
             box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
-            overflow: hidden;
+            overflow: visible;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -571,6 +568,317 @@
             width: 100%;
             height: 100%;
             object-fit: contain;
+            border-radius: 8px;
+            user-select: none;
+            -webkit-user-drag: none;
+        }
+
+        /* ==========================================
+           WEBCAM PIP BUBBLE & AI MATTING STYLES
+        ========================================== */
+        .webcam-overlay {
+            position: absolute;
+            z-index: 40;
+            cursor: grab;
+            touch-action: none;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .webcam-overlay.dragging {
+            cursor: grabbing;
+        }
+
+        .webcam-canvas-wrap {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: border-radius 0.2s, box-shadow 0.2s;
+        }
+
+        /* Shape 1: Cutout / Silhouette */
+        .webcam-overlay.shape-cutout .webcam-canvas-wrap {
+            border-radius: 0;
+            border: none;
+            box-shadow: none;
+            filter: drop-shadow(0 8px 22px rgba(0, 0, 0, 0.5));
+        }
+
+        /* Shape 2: Circle / Loom Style */
+        .webcam-overlay.shape-circle .webcam-canvas-wrap {
+            border-radius: 50%;
+            border: 3px solid rgba(255, 255, 255, 0.95);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+        }
+
+        /* Shape 3: Rounded Rect */
+        .webcam-overlay.shape-rect .webcam-canvas-wrap {
+            border-radius: 16px;
+            border: 3px solid rgba(255, 255, 255, 0.95);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+        }
+
+        #webcamDisplayCanvas {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        /* Floating Mini Controls on Hover with Bridge */
+        .webcam-toolbar-wrap {
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            padding-bottom: 12px; /* Invisible hover bridge connecting overlay to toolbar */
+            z-index: 120;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .webcam-toolbar-wrap.dock-below {
+            bottom: auto;
+            top: 100%;
+            padding-bottom: 0;
+            padding-top: 12px;
+        }
+
+        .webcam-overlay:hover .webcam-toolbar-wrap,
+        .webcam-toolbar-wrap:hover,
+        .webcam-toolbar-wrap:focus-within {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        .webcam-shortcut-hint {
+            background: rgba(15, 23, 42, 0.88);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #E2E8F0;
+            font-size: 0.72rem;
+            font-weight: 500;
+            padding: 3px 10px;
+            border-radius: 999px;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+            pointer-events: none;
+            user-select: none;
+        }
+
+        .webcam-shortcut-hint strong {
+            color: var(--brand-cyan);
+        }
+
+        .webcam-toolbar {
+            background: rgba(15, 23, 42, 0.94);
+            backdrop-filter: blur(14px);
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            border-radius: 999px;
+            padding: 4px 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+            white-space: nowrap;
+            user-select: none;
+        }
+
+        .webcam-tool-btn {
+            background: rgba(255, 255, 255, 0.12);
+            border: none;
+            color: white;
+            font-size: 0.78rem;
+            font-weight: 700;
+            padding: 3px 8px;
+            border-radius: 999px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            transition: all 0.15s;
+        }
+
+        .webcam-tool-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.08);
+        }
+
+        .webcam-tool-btn.btn-close-cam:hover {
+            background: rgba(239, 68, 68, 0.9);
+        }
+
+        /* Resize Handles */
+        .webcam-handle {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background: #06B6D4;
+            border: 2px solid white;
+            border-radius: 50%;
+            opacity: 0;
+            transition: opacity 0.15s, transform 0.15s;
+            z-index: 55;
+        }
+
+        .webcam-overlay:hover .webcam-handle {
+            opacity: 1;
+        }
+
+        .handle-tl { top: -4px; left: -4px; cursor: nwse-resize; }
+        .handle-tr { top: -4px; right: -4px; cursor: nesw-resize; }
+        .handle-bl { bottom: -4px; left: -4px; cursor: nesw-resize; }
+        .handle-br { bottom: -4px; right: -4px; cursor: nwse-resize; }
+
+        .handle-tl:hover, .handle-tr:hover, .handle-bl:hover, .handle-br:hover {
+            transform: scale(1.3);
+            background: #0284C7;
+        }
+
+        /* Dock Cam Button & Selector */
+        .cam-controls-wrap {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-webcam-toggle {
+            background: #F8FAFC;
+            border: 1px solid var(--brand-border);
+            color: var(--brand-navy);
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 0.78rem;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.15s;
+        }
+
+        .btn-webcam-toggle:hover {
+            background: #E0F2FE;
+            border-color: var(--brand-cyan);
+        }
+
+        .btn-webcam-toggle.active {
+            background: linear-gradient(135deg, #0284C7, #0369A1);
+            border-color: #38BDF8;
+            color: white;
+            box-shadow: 0 2px 8px rgba(2, 132, 199, 0.35);
+        }
+
+        /* While the browser is asking for camera permission: the button shows the
+           wait, and the overlay stays hidden until a stream actually arrives. */
+        /* ==========================================
+           UNSUPPORTED DEVICE GATE
+           The studio is desktop-only: it needs a precise pointer for waveform
+           editing and camera framing, and a wide screen for the slide + prompter
+           layout. Rather than let a phone user hit a broken UI, say so plainly.
+           ========================================== */
+        .unsupported-gate {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 99999;
+            background: linear-gradient(160deg, #0F172A, #1E293B);
+            color: #E2E8F0;
+            padding: 28px 22px;
+            text-align: center;
+            overflow-y: auto;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .unsupported-gate.visible { display: flex; }
+
+        .unsupported-inner { max-width: 480px; margin: auto; }
+
+        .unsupported-gate .ug-icon {
+            font-size: 3.2rem;
+            margin-bottom: 14px;
+        }
+
+        .unsupported-gate h1 {
+            font-size: 1.4rem;
+            font-weight: 800;
+            margin-bottom: 14px;
+            color: #fff;
+            line-height: 1.25;
+        }
+
+        .unsupported-gate p {
+            font-size: 0.98rem;
+            line-height: 1.6;
+            margin-bottom: 14px;
+            color: #CBD5E1;
+        }
+
+        .unsupported-gate .ug-action {
+            font-weight: 700;
+            color: #7DD3FC;
+        }
+
+        .unsupported-gate .ug-anyway {
+            margin-top: 22px;
+            background: transparent;
+            border: 1px solid #475569;
+            color: #94A3B8;
+            padding: 9px 16px;
+            border-radius: 9px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .unsupported-gate .ug-anyway:hover {
+            border-color: #64748B;
+            color: #CBD5E1;
+        }
+
+        .btn-webcam-toggle.pending {
+            opacity: 0.65;
+            cursor: progress;
+            border-color: var(--brand-cyan);
+            animation: webcamPending 1s ease-in-out infinite;
+        }
+
+        @keyframes webcamPending {
+            0%, 100% { opacity: 0.55; }
+            50%      { opacity: 0.9; }
+        }
+
+        .camera-select {
+            background: #F8FAFC;
+            border: 1px solid var(--brand-border);
+            color: var(--brand-navy);
+            border-radius: 6px;
+            padding: 4px 8px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            outline: none;
+            cursor: pointer;
+            max-width: 140px;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            overflow: hidden;
         }
 
         .preview-nav {
@@ -1168,11 +1476,21 @@
 </head>
 <body>
 
+    <!-- Unsupported device gate (phones / tablets): the studio is desktop-only -->
+    <div class="unsupported-gate" id="unsupportedGate">
+        <div class="unsupported-inner">
+            <div class="ug-icon">🖥️</div>
+            <h1 id="ugTitle">Ordinateur requis</h1>
+            <p id="ugBody"></p>
+            <p class="ug-action" id="ugAction"></p>
+            <button class="ug-anyway" id="ugAnyway" onclick="dismissUnsupportedGate()"></button>
+        </div>
+    </div>
+
     <!-- Header -->
     <header>
         <div class="brand" onclick="showLandingView()">
             <h1>SlidePunch 🥊</h1>
-            <span class="mode-badge" id="appModeBadge">⚡ Native Server</span>
         </div>
 
         <div class="project-selector-wrap" id="projectSelectorWrap" style="display:none;">
@@ -1205,16 +1523,16 @@
     <div class="landing-view" id="landingView">
         <div class="landing-card">
             <div class="landing-header">
-                <h2 id="txtLandingTitle">🥊 SlidePunch Presentation Studio</h2>
-                <p id="txtLandingSub">Record your slides slide-by-slide with real-time waveform, surgical audio editing, and 1-click video export.</p>
+                <h2 id="txtLandingTitle">🥊 Studio de Présentation SlidePunch</h2>
+                <p id="txtLandingSub">Enregistrez vos présentations slide-par-slide avec spectrogramme temps réel, édition intuitive et export vidéo 1-clic.</p>
             </div>
 
             <!-- Upload Dropzone -->
             <div class="landing-dropzone" id="mainLandingDropzone" onclick="document.getElementById('landingPdfInput').click()">
                 <input type="file" id="landingPdfInput" accept="application/pdf" style="display:none;" onchange="onLandingPdfSelected(this)">
                 <div class="dropzone-icon">📄</div>
-                <div class="dropzone-title" id="txtDropzoneTitle">Drop your Presentation PDF here</div>
-                <div class="dropzone-sub" id="txtDropzoneSub">or click to browse from your computer (LaTeX Beamer, PowerPoint, Typst, Keynote)</div>
+                <div class="dropzone-title" id="txtDropzoneTitle">Déposez votre présentation PDF ici</div>
+                <div class="dropzone-sub" id="txtDropzoneSub">ou cliquez pour choisir un fichier (LaTeX Beamer, PowerPoint, Typst, Keynote)</div>
             </div>
 
             <!-- Existing Projects List (Shown when 1 or more projects exist) -->
@@ -1230,16 +1548,16 @@
             <!-- Quick Features -->
             <div class="landing-features-grid">
                 <div class="feature-box">
-                    <h4 id="feat1Title">🔴 1-Click Record & Cut</h4>
-                    <p id="feat1Sub">Hit record and stop. Drag on the waveform to select and cut out any stumble instantly.</p>
+                    <h4 id="feat1Title">🔴 Punch-In Direct</h4>
+                    <p id="feat1Sub">Placez le curseur n'importe où sur la forme d'onde et réenregistrez pour écraser ou prolonger.</p>
                 </div>
                 <div class="feature-box">
-                    <h4 id="feat2Title">✏️ Live Prompter</h4>
-                    <p id="feat2Sub">Synchronized editable speaker script next to your slide, auto-saved in Markdown.</p>
+                    <h4 id="feat2Title">✏️ Prompteur Direct</h4>
+                    <p id="feat2Sub">Script de parole synchronisé à côté de vos slides, sauvegardé en Markdown.</p>
                 </div>
                 <div class="feature-box">
-                    <h4 id="feat3Title">🎬 1-Click Video</h4>
-                    <p id="feat3Sub">Exports a crisp 1080p presentation video with zero audio drift.</p>
+                    <h4 id="feat3Title">🎬 Vidéo en 1 Clic</h4>
+                    <p id="feat3Sub">Exporte une vidéo 1080p parfaitement calée sans montage.</p>
                 </div>
             </div>
         </div>
@@ -1259,8 +1577,58 @@
 
         <!-- Center: Slide Preview -->
         <div class="preview-pane">
-            <div class="slide-img-container">
+            <div class="slide-img-container" id="slideImgContainer">
                 <img id="currentSlideImg" src="" alt="Slide Preview">
+
+                <!-- Interactive Draggable & Resizable Webcam Overlay with Real-Time AI Matting -->
+                <div class="webcam-overlay shape-cutout" id="webcamOverlay" style="display:none;">
+                    <div class="webcam-canvas-wrap" id="webcamCanvasWrap">
+                        <canvas id="webcamDisplayCanvas"></canvas>
+                    </div>
+
+                    <!-- Floating Mini Toolbar on Hover with bridge -->
+                    <div class="webcam-toolbar-wrap" id="webcamToolbarWrap">
+                        <div class="webcam-toolbar" id="webcamToolbar">
+                            <button class="webcam-tool-btn" id="btnWebcamShape" onclick="cycleWebcamShape(event)" title="Forme (Silhouette / Bulle ronde / Rectangle)">
+                                <span id="txtWebcamShapeIcon">👤</span> <span id="txtWebcamShapeLbl">Silhouette</span>
+                            </button>
+                            <button class="webcam-tool-btn" id="btnWebcamBg" onclick="cycleWebcamBgMode(event)" title="Arrière-plan (Détouré / Flou / Normal)">
+                                <span id="txtWebcamBgIcon">✨</span> <span id="txtWebcamBgLbl">Détouré</span>
+                            </button>
+                            <button class="webcam-tool-btn" id="btnWebcamMirror" onclick="toggleWebcamMirror(event)" title="Miroir">
+                                <span>↔️</span>
+                            </button>
+                            <button class="webcam-tool-btn" id="btnZoomOut" onclick="adjustWebcamZoom(-0.15, event)" title="Dézoomer visage"><span>➖</span></button>
+                            <button class="webcam-tool-btn" id="btnWebcamZoomReset" onclick="resetWebcamFraming(event)" title="Réinitialiser zoom & cadrage (Molette = Zoom, Maj+Glisser = Centrer)">
+                                <span id="txtWebcamZoomLbl">🔍 1.0x</span>
+                            </button>
+                            <button class="webcam-tool-btn" id="btnZoomIn" onclick="adjustWebcamZoom(0.15, event)" title="Zoomer visage"><span>➕</span></button>
+                            <button class="webcam-tool-btn btn-close-cam" onclick="disableWebcam(event)" title="Fermer la caméra">
+                                <span>✕</span>
+                            </button>
+                        </div>
+                        <div class="webcam-shortcut-hint" id="txtWebcamShortcutHint">
+                            <span>🖱️ <strong>Molette :</strong> Zoom</span>
+                            <span>•</span>
+                            <span>🖱️ <strong>Clic droit</strong> ou <strong>Maj+Glisser :</strong> Recadrer</span>
+                        </div>
+                    </div>
+
+                    <!-- Resize handles (4 corners) -->
+                    <div class="webcam-handle handle-tl" data-handle="tl"></div>
+                    <div class="webcam-handle handle-tr" data-handle="tr"></div>
+                    <div class="webcam-handle handle-bl" data-handle="bl"></div>
+                    <div class="webcam-handle handle-br" data-handle="br"></div>
+                </div>
+
+                <!-- Hidden video elements for feed & playback -->
+                <video id="webcamVideo" playsinline autoplay muted style="display:none;"></video>
+                <!-- Parked off screen rather than display:none: a hidden video has
+                     its decoding suspended by the browser after a few seconds, which
+                     froze the recorded camera mid-playback. It must stay laid out to
+                     keep feeding frames to the canvas. -->
+                <video id="webcamPlaybackVideo" playsinline muted
+                       style="position:fixed; left:-10000px; top:0; width:160px; height:120px; opacity:0; pointer-events:none; z-index:-1;"></video>
             </div>
             <div class="preview-nav">
                 <button class="nav-btn" id="btnPrevSlide" onclick="prevSlide()">◀ Previous (←)</button>
@@ -1309,7 +1677,7 @@
                     <span class="playhead-badge" id="playheadTimeBadge">00:00.0</span>
                 </div>
                 <div id="waveformHint" style="color:#94A3B8;">
-                    Click to place playhead. Drag across to select a range to cut.
+                    Cliquez pour placer le curseur. Glissez pour sélectionner une plage à couper.
                 </div>
             </div>
             <div class="canvas-container" id="canvasContainer">
@@ -1319,7 +1687,7 @@
 
         <!-- Controls Bar -->
         <div class="dock-controls-bar">
-            <!-- Left: Microphone Selector & VU Meter -->
+            <!-- Left: Microphone Selector, Camera Toggle & VU Meter -->
             <div class="dock-left">
                 <div class="mic-selector-box" id="micSelectorBox" title="Sélectionner la source microphone">
                     <span style="font-size:0.85rem; flex-shrink:0;">🎙️</span>
@@ -1327,63 +1695,69 @@
                         <option value="">Microphone par défaut</option>
                     </select>
                 </div>
+
+                <div class="cam-controls-wrap">
+                    <button class="btn-webcam-toggle" id="btnToggleWebcam" onclick="toggleWebcam()" title="Activer / Désactiver la caméra">
+                        <span id="txtWebcamIcon">📷</span> <span id="txtWebcamToggle">Caméra</span>
+                    </button>
+                    <select id="cameraSelect" class="camera-select" onchange="onCameraDeviceChanged()" style="display:none;" title="Source caméra"></select>
+                </div>
+
                 <div class="vu-container">
-                    <div class="vu-label" id="txtMicLevel">Mic Level</div>
+                    <div class="vu-label" id="txtMicLevel">Niveau Micro</div>
                     <div class="vu-bar-wrapper">
                         <div class="vu-bar" id="vuBar"></div>
                     </div>
                 </div>
             </div>
 
-            <!-- Center: Streamlined Actions (Capture Mode vs Edit Mode) -->
+            <!-- Center: Actions (Capture vs Edition) -->
             <div class="dock-center">
                 
                 <!-- 1. CAPTURE MODE CONTROLS -->
                 <div id="captureControls" style="display:flex; align-items:center; gap:12px;">
                     <button class="btn-ctl btn-rec-toggle" id="btnToggleRec" onclick="toggleRecording()">
-                        <span id="recIcon">●</span> <span id="txtRecToggle">Record (Space)</span>
+                        <span id="recIcon">●</span> <span id="txtRecToggle">Enregistrer (Espace)</span>
                     </button>
                     <button class="btn-ctl btn-paste" id="btnPaste" onclick="pasteAudioClipboard()" style="display:none;" title="Coller l'audio copié/coupé au curseur (Ctrl+V)">
-                        <span>📋</span> <span id="txtPaste">Paste (Ctrl+V)</span>
+                        <span>📋</span> <span id="txtPaste">Coller (Ctrl+V)</span>
                     </button>
                     <div class="timer-display" id="timerDisplay">00:00</div>
-                    <button class="btn-delete-all" id="btnDeleteAll" onclick="deleteCurrentSlideAudio()" style="display:none;" title="Effacer l'audio de cette diapositive">
-                        <span>🗑️</span> <span id="txtDeleteAll">Effacer l'audio</span>
-                    </button>
                 </div>
 
                 <!-- 2. EDIT MODE CONTROLS (Triggered on Waveform Drag Selection) -->
                 <div id="editControls" style="display:none; align-items:center; gap:10px;">
                     <button class="btn-ctl btn-cut-selection" id="btnCutSelection" onclick="cutSelectedRange()" title="Couper la sélection (Ctrl+X)">
-                        <span>✂️</span> <span id="txtCutSelection">Cut Selection</span>
+                        <span>✂️</span> <span id="txtCutSelection">Couper (Ctrl+X)</span>
                     </button>
                     <button class="btn-ctl btn-copy-selection" id="btnCopySelection" onclick="copySelectedRange()" title="Copier la sélection (Ctrl+C)">
-                        <span>📋</span> <span id="txtCopySelection">Copy (Ctrl+C)</span>
+                        <span>📋</span> <span id="txtCopySelection">Copier (Ctrl+C)</span>
                     </button>
                     <button class="btn-ctl btn-play-selection" id="btnPlaySelection" onclick="playSelectedRange()">
-                        <span>▶</span> <span id="txtPlaySelection">Play</span>
+                        <span>▶</span> <span id="txtPlaySelection">Écouter</span>
                     </button>
                     <button class="btn-ctl btn-cancel-selection" id="btnCancelSelection" onclick="clearSelection()">
-                        <span>✕</span> <span id="txtCancelSelection">Deselect (Esc)</span>
+                        <span>✕</span> <span id="txtCancelSelection">Annuler (Échap)</span>
                     </button>
                     <div class="selection-badge" id="selectionTimeBadge">00:00.0 (0.0s)</div>
-                    <button class="btn-delete-all" onclick="deleteCurrentSlideAudio()" title="Effacer l'audio de cette diapositive">
-                        <span>🗑️</span>
-                    </button>
                 </div>
 
             </div>
 
-            <!-- Right: Playback controls -->
+            <!-- Right: Playback controls & Clear Recording -->
             <div class="dock-right">
                 <div class="audio-player-box" id="customAudioPlayer">
                     <button class="btn-play-pause" id="btnPlayPause" onclick="togglePlayAudio()">▶</button>
-                    <button class="btn-skip" title="Skip back 5s" onclick="skipAudio(-5)">-5s</button>
-                    <button class="btn-skip" title="Skip forward 5s" onclick="skipAudio(5)">+5s</button>
+                    <button class="btn-skip" id="btnSkipBack" title="Reculer de 5s" onclick="skipAudio(-5)">-5s</button>
+                    <button class="btn-skip" id="btnSkipFwd" title="Avancer de 5s" onclick="skipAudio(5)">+5s</button>
                     <span class="time-label" id="curTimeLabel">00:00</span>
                     <span style="color:#CBD5E1;">/</span>
                     <span class="time-label" id="durTimeLabel">00:00</span>
                 </div>
+
+                <button class="btn-delete-all" id="btnDeleteAll" onclick="deleteCurrentSlideAudio()" style="display:none;" title="Effacer l'enregistrement de cette diapositive">
+                    <span>🗑️</span> <span id="txtDeleteAll">Effacer l'enregistrement</span>
+                </button>
             </div>
         </div>
 
@@ -1440,8 +1814,7 @@
         // ==========================================
         const i18n = {
             en: {
-                serverModeBadge: "⚡ Native Server",
-                webModeBadge: "🌐 In-Browser (Privacy First)",
+                webModeBadge: "🌐 In-Browser (Private)",
                 projectLabel: "Project:",
                 newProjectBtn: "+ New",
                 exportVideoBtn: "Export Video",
@@ -1455,10 +1828,23 @@
                 prompterHint1: "✏️ <strong>Editable script</strong> (auto-saved)",
                 prompterHint2: "💡 Click outside to re-enable <kbd>Space</kbd>",
                 waveformTitle: "📊 <strong>Waveform</strong>",
-                waveformHint: "Click to move playhead. Drag across to select a range to cut.",
+                waveformHint: "Click to place playhead. Drag across to select a range to cut.",
+                unsupportedTitle: "Desktop computer required",
+                unsupportedBody: "SlidePunch does not work on phones or tablets. The studio needs a real keyboard, a precise pointer and a wide screen to record slide by slide, edit the waveform and frame the camera.",
+                unsupportedAction: "Please reopen this page on a Windows, macOS or Linux computer.",
+                unsupportedAnyway: "Continue anyway (not supported)",
                 defaultMic: "Default Microphone",
                 selectMicTitle: "Select Microphone",
                 micLevel: "Mic Level",
+                webcamToggle: "Camera",
+                defaultCam: "Default Camera",
+                webcamShapeCutout: "Cutout",
+                webcamShapeCircle: "Circle",
+                webcamShapeRect: "Rectangle",
+                webcamBgCutout: "Cutout",
+                webcamBgBlur: "Blur",
+                webcamBgOriginal: "Normal",
+                webcamShortcutHint: "<span>🖱️ <strong>Wheel:</strong> Zoom</span> <span>•</span> <span>🖱️ <strong>Right-Click</strong> or <strong>Shift+Drag:</strong> Pan</span>",
                 recordStart: "Record (Space)",
                 recordStop: "Stop & Save (Space)",
                 recordFromStart: "Record from start (Space)",
@@ -1467,30 +1853,34 @@
                 cutSelection: "Cut (Ctrl+X)",
                 copySelection: "Copy (Ctrl+C)",
                 pasteBtn: "Paste (Ctrl+V)",
-                playSelection: "Play Selection",
+                playSelection: "Play",
                 cancelSelection: "Deselect (Esc)",
-                deleteAll: "Clear Audio",
-                confirmClearAudio: "Clear audio recording for this slide?",
-                deleteSlideTitle: "Clear audio for this slide",
-                toastCopied: "Audio Copied ✓",
-                toastCut: "Audio Cut to Clipboard ✓",
-                toastPasted: "Audio Pasted ✓",
-                toastCleared: "Audio cleared ✓",
+                deleteAll: "Clear Slide Recording",
+                confirmClearAudio: "Clear audio and video recording for this slide?",
+                deleteSlideTitle: "Clear recording for this slide",
+                toastCopied: "Audio copied ✓",
+                toastCut: "Audio cut to clipboard ✓",
+                toastPasted: "Audio pasted ✓",
+                toastCleared: "Recording cleared ✓",
+                toastZoom: "Zoom",
+                toastResetFraming: "Framing reset (1.0x)",
                 recentProjectsTitle: "📂 Continue Existing Project",
                 openStudioBtn: "Open Studio ➔",
                 studioNavBtn: "Studio",
                 prevBtn: "◀ Previous (←)",
                 nextBtn: "Next (→) ▶",
+                skipBackTitle: "Skip back 5s",
+                skipFwdTitle: "Skip forward 5s",
                 landingTitle: "🥊 SlidePunch Presentation Studio",
                 landingSub: "Record your presentation slide-by-slide with real-time waveform, instant audio editing, and 1-click video export.",
                 dropzoneTitle: "Drop your Presentation PDF here",
                 dropzoneSub: "or click to browse from your computer (LaTeX Beamer, PowerPoint, Typst, Keynote)",
-                feat1Title: "🔴 Live Punch-In Overdub",
-                feat1Sub: "Place the cursor anywhere on the waveform and hit Record to overwrite or append seamlessly.",
+                feat1Title: "🔴 Direct Overdub",
+                feat1Sub: "Place the cursor anywhere on the waveform to overwrite or extend seamlessly.",
                 feat2Title: "✏️ Live Prompter",
-                feat2Sub: "Synchronized editable speaker script next to your slide, auto-saved in Markdown.",
+                feat2Sub: "Synchronized speech script next to your slides, auto-saved in Markdown.",
                 feat3Title: "🎬 1-Click Video",
-                feat3Sub: "Exports a crisp 1080p presentation video with zero audio drift.",
+                feat3Sub: "Exports a clean 1080p MP4 presentation video with zero audio drift.",
                 modalNewTitle: "Create New Project",
                 modalTitleLabel: "Project Title:",
                 modalPdfLabel: "Slide PDF File:",
@@ -1500,17 +1890,17 @@
                 modalImportingTitle: "Importing PDF...",
                 modalImportingMsg: "Converting PDF slides into high-resolution images. Please wait...",
                 modalGeneratingTitle: "Generating Video...",
-                modalGeneratingMsg: "Stitching slide images and audio into a presentation video. Please wait...",
+                modalGeneratingMsg: "Assembling presentation video (1080p MP4)...",
                 modalSuccessTitle: "🎉 Video Ready!",
-                modalSuccessMsg: "Video successfully assembled!<br><br><a href=\"{url}\" download=\"presentation.webm\" target=\"_blank\" style=\"color:var(--brand-cyan); font-weight:700; font-size:1.1rem;\">▶ Download Video</a>",
+                modalSuccessMsg: "Your 1080p MP4 presentation video has been generated successfully.",
+                downloadVideoBtn: "🎬 Download Video (MP4 1080p)",
                 modalErrorTitle: "❌ Error",
                 closeBtn: "Close",
                 recordedStats: "recorded",
                 confirmPendingGen: "There are {count} slide(s) without audio.\nDo you want to generate the video anyway?"
             },
             fr: {
-                serverModeBadge: "⚡ Serveur Local",
-                webModeBadge: "🌐 100% Navigateur (Privé)",
+                webModeBadge: "🌐 Navigateur (Privé)",
                 projectLabel: "Projet :",
                 newProjectBtn: "+ Nouveau",
                 exportVideoBtn: "Exporter la Vidéo",
@@ -1520,16 +1910,29 @@
                 targetPrefix: "Cible :",
                 savedBadge: "Sauvegardé ✓",
                 savingBadge: "Enregistrement...",
-                prompterPlaceholder: "Écrivez ou modifiez le script de cette slide ici...",
+                prompterPlaceholder: "Écrivez ou modifiez le script de cette diapositive ici...",
                 prompterHint1: "✏️ <strong>Script modifiable</strong> (auto-sauvegardé)",
                 prompterHint2: "💡 Cliquez en dehors pour réactiver <kbd>Espace</kbd>",
                 waveformTitle: "📊 <strong>Forme d'onde</strong>",
                 waveformHint: "Cliquez pour placer le curseur. Glissez pour sélectionner une plage à couper.",
-                defaultMic: "Micro par défaut",
+                unsupportedTitle: "Ordinateur requis",
+                unsupportedBody: "SlidePunch ne fonctionne pas sur téléphone ni sur tablette. Le studio a besoin d'un vrai clavier, d'un pointeur précis et d'un grand écran pour enregistrer diapo par diapo, éditer la forme d'onde et cadrer la caméra.",
+                unsupportedAction: "Merci de rouvrir cette page sur un ordinateur Windows, macOS ou Linux.",
+                unsupportedAnyway: "Continuer quand même (non supporté)",
+                defaultMic: "Microphone par défaut",
                 selectMicTitle: "Sélectionner le microphone",
                 micLevel: "Niveau Micro",
+                webcamToggle: "Caméra",
+                defaultCam: "Caméra par défaut",
+                webcamShapeCutout: "Silhouette",
+                webcamShapeCircle: "Bulle",
+                webcamShapeRect: "Rectangle",
+                webcamBgCutout: "Détouré",
+                webcamBgBlur: "Flou",
+                webcamBgOriginal: "Normal",
+                webcamShortcutHint: "<span>🖱️ <strong>Molette :</strong> Zoom</span> <span>•</span> <span>🖱️ <strong>Clic droit</strong> ou <strong>Maj+Glisser :</strong> Recadrer</span>",
                 recordStart: "Enregistrer (Espace)",
-                recordStop: "Arrêter & Sauver (Espace)",
+                recordStop: "Arrêter & Sauvegarder (Espace)",
                 recordFromStart: "Enregistrer depuis le début (Espace)",
                 recordAppend: "Continuer l'enregistrement (Espace)",
                 recordFrom: "Enregistrer depuis",
@@ -1538,28 +1941,32 @@
                 pasteBtn: "Coller (Ctrl+V)",
                 playSelection: "Écouter",
                 cancelSelection: "Annuler (Échap)",
-                deleteAll: "Effacer l'audio",
-                confirmClearAudio: "Effacer l'enregistrement audio de cette diapositive ?",
-                deleteSlideTitle: "Effacer l'audio de cette diapositive",
+                deleteAll: "Effacer l'enregistrement",
+                confirmClearAudio: "Effacer l'enregistrement de cette diapositive ?",
+                deleteSlideTitle: "Effacer l'enregistrement de cette diapositive",
                 toastCopied: "Audio copié ✓",
                 toastCut: "Audio coupé dans le presse-papier ✓",
                 toastPasted: "Audio collé ✓",
-                toastCleared: "Audio effacé ✓",
+                toastCleared: "Enregistrement effacé ✓",
+                toastZoom: "Zoom",
+                toastResetFraming: "Cadrage réinitialisé (1.0x)",
                 recentProjectsTitle: "📂 Reprendre un projet existant",
                 openStudioBtn: "Ouvrir le Studio ➔",
                 studioNavBtn: "Studio",
                 prevBtn: "◀ Précédente (←)",
                 nextBtn: "Suivante (→) ▶",
+                skipBackTitle: "Reculer de 5s",
+                skipFwdTitle: "Avancer de 5s",
                 landingTitle: "🥊 Studio de Présentation SlidePunch",
-                landingSub: "Enregistrez vos présentations slide-par-slide avec spectrogramme temps réel, édition intuitive et export vidéo 1-clic.",
+                landingSub: "Enregistrez vos présentations slide-par-slide avec forme d'onde temps réel, édition intuitive et export vidéo 1-clic.",
                 dropzoneTitle: "Déposez votre présentation PDF ici",
                 dropzoneSub: "ou cliquez pour choisir un fichier (LaTeX Beamer, PowerPoint, Typst, Keynote)",
-                feat1Title: "🔴 Punch-In Direct",
-                feat1Sub: "Placez le curseur n'importe où sur la forme d'onde et réenregistrez pour écraser ou prolonger.",
-                feat2Title: "✏️ Prompteur Direct",
-                feat2Sub: "Script de parole synchronisé à côté de vos slides, sauvegardé en Markdown.",
+                feat1Title: "🔴 Enregistrement Direct",
+                feat1Sub: "Placez le curseur n'importe où sur la forme d'onde pour réenregistrer ou prolonger.",
+                feat2Title: "✏️ Prompteur Synchronisé",
+                feat2Sub: "Script de parole synchronisé avec chaque diapositive, sauvegardé en Markdown.",
                 feat3Title: "🎬 Vidéo en 1 Clic",
-                feat3Sub: "Exporte une vidéo 1080p parfaitement calée sans montage.",
+                feat3Sub: "Exporte une vidéo 1080p MP4 propre sans montage complexe.",
                 modalNewTitle: "Créer un Nouveau Projet",
                 modalTitleLabel: "Titre du Projet :",
                 modalPdfLabel: "Fichier PDF des Diapositives :",
@@ -1569,9 +1976,10 @@
                 modalImportingTitle: "Importation du PDF...",
                 modalImportingMsg: "Conversion des diapositives PDF en images haute résolution. Veuillez patienter...",
                 modalGeneratingTitle: "Génération de la Vidéo...",
-                modalGeneratingMsg: "Assemblage des diapositives et des enregistrements audio. Veuillez patienter...",
+                modalGeneratingMsg: "Assemblage de la vidéo de présentation (MP4 1080p)...",
                 modalSuccessTitle: "🎉 Vidéo Prête !",
-                modalSuccessMsg: "La vidéo a été assemblée avec succès !<br><br><a href=\"{url}\" download=\"presentation.webm\" target=\"_blank\" style=\"color:var(--brand-cyan); font-weight:700; font-size:1.1rem;\">▶ Télécharger la Vidéo</a>",
+                modalSuccessMsg: "Votre vidéo de présentation MP4 1080p a été assemblée avec succès !",
+                downloadVideoBtn: "🎬 Télécharger la Vidéo (MP4 1080p)",
                 modalErrorTitle: "❌ Erreur",
                 closeBtn: "Fermer",
                 recordedStats: "enregistrées",
@@ -1579,10 +1987,67 @@
             }
         };
 
+        // ==========================================
+        // APPLICATION STATE
+        // ==========================================
         let currentLang = localStorage.getItem('slidepunch_lang') || 'fr';
+        let db = null;
+        let currentProjectId = null;
+        let projects = [];
+        let slides = [];
+        let currentIndex = 0;
+        
+        let recordingState = 'idle';
+        let audioContext = null;
+        let microphoneStream = null;
+        let scriptProcessor = null;
+        let micSource = null;
+        let isPlaying = false;
+        let playbackSource = null;
+        let playbackStartTime = 0;
+        let playbackStartOffset = 0;
+        let playbackAnimFrame = null;
+
+        let currentSamples = [];
+        let sampleRate = 48000;
+        let playheadPosition = 0.0;
+        let totalDuration = 0.0;
+
+        let selectionStart = null;
+        let selectionEnd = null;
+        let isDraggingWaveform = false;
+        let dragStartX = 0;
+        let hasMovedDrag = false;
+
+        let currentFontSize = 1.15;
+        let saveTimeout = null;
+        let selectedPdfBytes = null;
+        let audioClipboard = null;
+        let videoClipboard = null;
+
+        let selectedAudioDeviceId = localStorage.getItem('slidepunch_selected_mic') || '';
+        let selectedCameraDeviceId = localStorage.getItem('slidepunch_selected_camera') || '';
+        let selfieSegmentation = null;
+        let webcamStream = null;
+        let webcamActive = false;
+        let isWebcamProcessing = false;
+        let webcamMediaRecorder = null;
+        let webcamRecordedChunks = [];
+
+        let webcamState = {
+            xPct: 0.70,
+            yPct: 0.65,
+            sizePct: 0.28,
+            shape: 'cutout',
+            bgMode: 'cutout',
+            mirrored: true,
+            camZoom: 1.0,
+            camPanX: 0.0,
+            camPanY: 0.0
+        };
 
         function t(key) {
-            return i18n[currentLang][key] || key;
+            return (i18n[currentLang] && i18n[currentLang][key]) || (i18n['en'] && i18n['en'][key]) || key;
         }
 
         function toggleLanguage() {
@@ -1591,8 +2056,56 @@
             applyLanguage();
         }
 
+        // ==========================================
+        // UNSUPPORTED DEVICE GATE
+        // The studio needs a precise pointer (waveform editing, camera framing)
+        // and a wide screen (slide + prompter side by side). On a phone or tablet
+        // the layout simply does not work, so say so instead of shipping a broken
+        // UI. A narrow window on a real desktop can dismiss the notice.
+        // ==========================================
+        let unsupportedGateDismissed = sessionStorage.getItem('slidepunch_gate_dismissed') === '1';
+
+        function isUnsupportedDevice() {
+            // Touch-primary device with no real pointer: a phone or a tablet.
+            const touchOnly = window.matchMedia('(pointer: coarse)').matches
+                           && window.matchMedia('(hover: none)').matches;
+            // Or a viewport too narrow for the slide + prompter layout. Judged on
+            // the window only (never screen.width, which reports the monitor and
+            // would wrongly clear a small window on a large display).
+            const tooNarrow = window.innerWidth < 900;
+            return touchOnly || tooNarrow;
+        }
+
+        function refreshUnsupportedGate() {
+            const gate = document.getElementById('unsupportedGate');
+            if (!gate) return;
+            const titleEl = document.getElementById('ugTitle');
+            const bodyEl = document.getElementById('ugBody');
+            const actionEl = document.getElementById('ugAction');
+            const anywayEl = document.getElementById('ugAnyway');
+            if (titleEl) titleEl.textContent = t('unsupportedTitle');
+            if (bodyEl) bodyEl.textContent = t('unsupportedBody');
+            if (actionEl) actionEl.textContent = t('unsupportedAction');
+            if (anywayEl) anywayEl.textContent = t('unsupportedAnyway');
+            const show = isUnsupportedDevice() && !unsupportedGateDismissed;
+            gate.classList.toggle('visible', show);
+            document.body.style.overflow = show ? 'hidden' : '';
+            // The page fades in only once init() adds .ready. The notice must not
+            // wait for that: on a phone, init() can stall or throw on a refused
+            // microphone permission, which would leave a blank page instead of
+            // an explanation.
+            if (show) document.body.classList.add('ready');
+        }
+
+        function dismissUnsupportedGate() {
+            unsupportedGateDismissed = true;
+            try { sessionStorage.setItem('slidepunch_gate_dismissed', '1'); } catch (e) {}
+            refreshUnsupportedGate();
+        }
+
         function applyLanguage() {
             document.documentElement.lang = currentLang;
+            refreshUnsupportedGate();
             document.getElementById('langFlag').textContent = currentLang === 'en' ? '🇫🇷' : '🇬🇧';
             document.getElementById('langText').textContent = currentLang === 'en' ? 'FR' : 'EN';
             
@@ -1608,9 +2121,16 @@
             document.getElementById('btnNextSlide').textContent = t('nextBtn');
             document.getElementById('txtPrompterHint1').innerHTML = t('prompterHint1');
             document.getElementById('txtPrompterHint2').innerHTML = t('prompterHint2');
+            const prompterArea = document.getElementById('prompterScript');
+            if (prompterArea) prompterArea.placeholder = t('prompterPlaceholder');
             document.getElementById('txtWaveformTitle').innerHTML = t('waveformTitle');
             document.getElementById('waveformHint').textContent = t('waveformHint');
             document.getElementById('txtMicLevel').textContent = t('micLevel');
+            const camToggle = document.getElementById('txtWebcamToggle');
+            if (camToggle) camToggle.textContent = t('webcamToggle') || "Caméra";
+            const shortcutHint = document.getElementById('txtWebcamShortcutHint');
+            if (shortcutHint) shortcutHint.innerHTML = t('webcamShortcutHint');
+            updateWebcamOverlayDOM();
 
             document.getElementById('txtCutSelection').textContent = t('cutSelection');
             document.getElementById('txtCopySelection').textContent = t('copySelection');
@@ -1621,6 +2141,11 @@
             
             const btnDel = document.getElementById('btnDeleteAll');
             if (btnDel) btnDel.title = t('deleteSlideTitle');
+
+            const btnSkipBack = document.getElementById('btnSkipBack');
+            if (btnSkipBack) btnSkipBack.title = t('skipBackTitle');
+            const btnSkipFwd = document.getElementById('btnSkipFwd');
+            if (btnSkipFwd) btnSkipFwd.title = t('skipFwdTitle');
 
             document.getElementById('txtLandingTitle').textContent = t('landingTitle');
             document.getElementById('txtLandingSub').textContent = t('landingSub');
@@ -1664,24 +2189,20 @@
 
         function updateModeBadge() {
             const badge = document.getElementById('appModeBadge');
-            if (isServerMode) {
-                badge.className = "mode-badge";
-                badge.textContent = t('serverModeBadge');
-            } else {
-                badge.className = "mode-badge web-mode";
-                badge.textContent = t('webModeBadge');
-            }
+            if (!badge) return;
+            badge.className = "mode-badge web-mode";
+            badge.textContent = t('webModeBadge');
         }
 
         // ==========================================
-        // HYBRID STORAGE ENGINE (IndexedDB / Server)
+        // STORAGE — IndexedDB, entirely in the browser
         // ==========================================
-        let isServerMode = false;
-        let db = null;
 
         function openIndexedDB() {
             return new Promise((resolve, reject) => {
-                const req = indexedDB.open('SlidePunchDB', 2);
+                // v3 adds the 'video' store: without it, camera takes recorded in
+                // browser mode had nowhere to live and were discarded on save.
+                const req = indexedDB.open('SlidePunchDB', 3);
                 req.onupgradeneeded = (e) => {
                     const database = e.target.result;
                     if (!database.objectStoreNames.contains('projects')) {
@@ -1693,6 +2214,9 @@
                     if (!database.objectStoreNames.contains('audio')) {
                         database.createObjectStore('audio', { keyPath: 'key' });
                     }
+                    if (!database.objectStoreNames.contains('video')) {
+                        database.createObjectStore('video', { keyPath: 'key' });
+                    }
                 };
                 req.onsuccess = (e) => {
                     db = e.target.result;
@@ -1702,83 +2226,34 @@
             });
         }
 
-        async function detectBackend() {
-            try {
-                const res = await fetch('/api/projects', { method: 'GET' });
-                if (res.ok) {
-                    isServerMode = true;
-                } else {
-                    isServerMode = false;
-                }
-            } catch (e) {
-                isServerMode = false;
-            }
-            updateModeBadge();
-        }
-
-        // ==========================================
-        // APPLICATION STATE
-        // ==========================================
-        let currentProjectId = null;
-        let projects = [];
-        let slides = [];
-        let currentIndex = 0;
-        
-        // Recording state: 'idle' | 'recording' | 'saving'
-        let recordingState = 'idle';
-        let audioContext = null;
-        let microphoneStream = null;
-        let scriptProcessor = null;
-        let micSource = null;
-        let isPlaying = false;
-        let playbackSource = null;
-        let playbackStartTime = 0;
-        let playbackStartOffset = 0;
-        let playbackAnimFrame = null;
-
-        // Raw Audio Samples in Float32 Array
-        let currentSamples = [];
-        let sampleRate = 48000;
-        let playheadPosition = 0.0;
-        let totalDuration = 0.0;
-
-        // Range Selection / Edit Mode
-        let selectionStart = null;
-        let selectionEnd = null;
-        let isDraggingWaveform = false;
-        let dragStartX = 0;
-        let hasMovedDrag = false;
-
         const canvas = document.getElementById('waveformCanvas');
         const canvasCtx = canvas.getContext('2d');
 
-        let currentFontSize = 1.15;
-        let saveTimeout = null;
-        let selectedPdfBytes = null;
-
         async function init() {
             window.addEventListener('resize', resizeCanvas);
+            window.addEventListener('resize', refreshUnsupportedGate);
+            window.addEventListener('orientationchange', refreshUnsupportedGate);
             setupWaveformMouseEvents();
             setupLandingDragAndDrop();
+            setupWebcamDragAndResize();
 
-            await detectBackend();
-            if (!isServerMode) {
-                await openIndexedDB();
-                // Purge legacy demo cache
-                try {
-                    const tx = db.transaction(['projects', 'slides', 'audio'], 'readwrite');
-                    tx.objectStore('projects').delete('hdr_demo');
-                    const sStore = tx.objectStore('slides');
-                    const req = sStore.getAll();
-                    req.onsuccess = () => {
-                        (req.result || []).forEach(s => {
-                            if (s.projectId === 'hdr_demo') sStore.delete(s.key);
-                        });
-                    };
-                } catch (e) {}
-            }
-
+            // Instant translation before rendering
             applyLanguage();
+
+            updateModeBadge();
+            await openIndexedDB();
+            try {
+                const tx = db.transaction(['projects', 'slides', 'audio'], 'readwrite');
+                tx.objectStore('projects').delete('hdr_demo');
+                const sStore = tx.objectStore('slides');
+                const req = sStore.getAll();
+                req.onsuccess = () => {
+                    (req.result || []).forEach(s => {
+                        if (s.projectId === 'hdr_demo') sStore.delete(s.key);
+                    });
+                };
+            } catch (e) {}
+
             await populateMicrophoneList();
             if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
                 navigator.mediaDevices.addEventListener('devicechange', () => {
@@ -1787,7 +2262,18 @@
             }
 
             await loadProjectsList();
-            showLandingView();
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const projParam = urlParams.get('project');
+            if (projParam) {
+                currentProjectId = projParam;
+                await loadProject(projParam);
+                showStudioView();
+            } else {
+                showLandingView();
+            }
+
+            document.body.classList.add('ready');
         }
 
         function showLandingView() {
@@ -1890,19 +2376,10 @@
             const sel = document.getElementById('projectSelect');
             sel.innerHTML = '';
 
-            if (isServerMode) {
-                try {
-                    const res = await fetch('/api/projects');
-                    projects = await res.json();
-                } catch (err) {
-                    console.error("Server projects error:", err);
-                }
-            } else {
-                const tx = db.transaction(['projects'], 'readonly');
-                const store = tx.objectStore('projects');
-                const req = store.getAll();
-                projects = await new Promise(r => { req.onsuccess = () => r(req.result || []); });
-            }
+            const tx = db.transaction(['projects'], 'readonly');
+            const store = tx.objectStore('projects');
+            const req = store.getAll();
+            projects = await new Promise(r => { req.onsuccess = () => r(req.result || []); });
 
             if (!currentProjectId && projects.length > 0) {
                 currentProjectId = projects[0].id;
@@ -1929,14 +2406,7 @@
 
         async function loadProject(projId) {
             currentProjectId = projId;
-            if (isServerMode) {
-                try {
-                    const res = await fetch(`/api/slides?project=${projId}`);
-                    slides = await res.json();
-                } catch (err) {
-                    console.error("Server slides error:", err);
-                }
-            } else {
+            {
                 const tx = db.transaction(['slides', 'audio'], 'readonly');
                 const sStore = tx.objectStore('slides');
                 const aStore = tx.objectStore('audio');
@@ -1956,11 +2426,18 @@
                     } else {
                         s.hasAudio = false;
                     }
+                    // Restore the camera timeline stored with the slide, and make
+                    // the takes it references available as blob URLs before any
+                    // playback needs them.
+                    if (!Array.isArray(s.videoTimeline)) s.videoTimeline = [];
+                    s.hasVideo = s.videoTimeline.some(c => !!c.takeId);
                 }
                 slides = filtered;
+                for (const s of slides) await preloadSlideTakes(s);
             }
 
             if (slides.length > 0) {
+                await loadProjectWebcamLayout(projId);
                 showStudioView();
                 document.getElementById('slideCountBadge').textContent = slides.length;
                 renderSidebar();
@@ -2020,11 +2497,7 @@
             currentIndex = index;
             const slide = slides[currentIndex];
 
-            if (isServerMode) {
-                document.getElementById('currentSlideImg').src = slide.image + '&t=' + new Date().getTime();
-            } else {
-                document.getElementById('currentSlideImg').src = slide.image;
-            }
+            document.getElementById('currentSlideImg').src = slide.image;
 
             const topicStr = (slide.topic || '').trim();
             const isGeneric = !topicStr || topicStr.toLowerCase() === `slide ${slide.number}` || topicStr.toLowerCase() === 'slide';
@@ -2033,6 +2506,17 @@
             
             const textarea = document.getElementById('prompterScript');
             textarea.value = slide.script || '';
+
+            // Ensure webcam overlay displays unified project layout. Visibility and
+            // readiness are separate concerns: the overlay may legitimately be
+            // hidden right now (camera off, not playing) while the slide still
+            // needs its layout and segmentation ready for playback.
+            updateWebcamOverlayVisibility();
+            if (webcamActive || slideHasCamera(slide)) {
+                updateWebcamOverlayDOM();
+                setupWebcamDragAndResize();
+                initMediaPipeSegmentation();
+            }
 
             playheadPosition = 0.0;
             totalDuration = 0.0;
@@ -2049,13 +2533,7 @@
             if (slide && slide.hasAudio) {
                 try {
                     ensureAudioContext();
-                    let arrayBuffer;
-                    if (isServerMode) {
-                        const response = await fetch(slide.audioUrl + '&t=' + new Date().getTime());
-                        arrayBuffer = await response.arrayBuffer();
-                    } else if (slide.audioBlob) {
-                        arrayBuffer = await slide.audioBlob.arrayBuffer();
-                    }
+                    const arrayBuffer = slide.audioBlob ? await slide.audioBlob.arrayBuffer() : null;
 
                     if (arrayBuffer) {
                         const decoded = await audioContext.decodeAudioData(arrayBuffer);
@@ -2284,10 +2762,934 @@
         }
 
         // ==========================================
-        // MICROPHONE SOURCE SELECTION & ENUMERATION
+        // WEBCAM & REAL-TIME AI MATTING ENGINE (MEDIAPIPE)
         // ==========================================
 
-        let selectedAudioDeviceId = localStorage.getItem('slidepunch_selected_mic') || '';
+        const segmentBufferCanvas = document.createElement('canvas');
+        const segmentBufferCtx = segmentBufferCanvas.getContext('2d', { willReadFrequently: true });
+
+        const webcamRecordCanvas = document.createElement('canvas');
+        webcamRecordCanvas.width = 720;
+        webcamRecordCanvas.height = 720;
+        const webcamRecordCtx = webcamRecordCanvas.getContext('2d');
+
+        async function initMediaPipeSegmentation() {
+            if (selfieSegmentation) return selfieSegmentation;
+            if (typeof SelfieSegmentation === 'undefined') {
+                console.warn("MediaPipe SelfieSegmentation script not loaded yet");
+                return null;
+            }
+
+            try {
+                selfieSegmentation = new SelfieSegmentation({
+                    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1.1675465747/${file}`
+                });
+
+                selfieSegmentation.setOptions({
+                    modelSelection: 1, // 1 = landscape (faster 60fps), 0 = general
+                    selfieMode: false
+                });
+
+                selfieSegmentation.onResults(onSelfieSegmentationResults);
+                return selfieSegmentation;
+            } catch (err) {
+                console.error("Error initializing MediaPipe SelfieSegmentation:", err);
+                return null;
+            }
+        }
+
+        async function populateCameraList() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoInputs = devices.filter(d => d.kind === 'videoinput');
+                const select = document.getElementById('cameraSelect');
+                if (!select) return;
+
+                const currentVal = selectedCameraDeviceId || select.value;
+                select.innerHTML = '';
+
+                const defaultOpt = document.createElement('option');
+                defaultOpt.value = '';
+                defaultOpt.textContent = t('defaultCam') || "Caméra par défaut";
+                select.appendChild(defaultOpt);
+
+                let matched = false;
+                videoInputs.forEach((device, idx) => {
+                    const opt = document.createElement('option');
+                    opt.value = device.deviceId;
+                    opt.textContent = device.label || `Caméra ${idx + 1}`;
+                    if (device.deviceId && device.deviceId === currentVal) {
+                        opt.selected = true;
+                        matched = true;
+                    }
+                    select.appendChild(opt);
+                });
+
+                if (!matched && currentVal === '') {
+                    select.value = '';
+                }
+            } catch (e) {
+                console.warn("Could not enumerate video devices:", e);
+            }
+        }
+
+        async function onCameraDeviceChanged() {
+            const select = document.getElementById('cameraSelect');
+            selectedCameraDeviceId = select.value;
+            localStorage.setItem('slidepunch_selected_camera', selectedCameraDeviceId);
+            if (webcamActive) {
+                await startWebcamStream();
+            }
+        }
+
+        async function toggleWebcam() {
+            if (webcamActive) {
+                disableWebcam();
+            } else {
+                await enableWebcam();
+            }
+        }
+
+        async function enableWebcam() {
+            const btn = document.getElementById('btnToggleWebcam');
+
+            // Acquire the camera FIRST, and only reveal the overlay once a stream
+            // is actually running. Showing it up-front meant that a pending or
+            // refused permission prompt left the circle and toolbar on screen
+            // with no camera behind them.
+            webcamActive = true;
+            btn.classList.add('pending');
+            try {
+                await startWebcamStream();
+            } finally {
+                btn.classList.remove('pending');
+            }
+
+            if (!webcamStream) {
+                // startWebcamStream already reported the failure and called
+                // disableWebcam(); nothing to show.
+                return;
+            }
+
+            btn.classList.add('active');
+            updateWebcamOverlayVisibility();
+            updateWebcamOverlayDOM();
+            setupWebcamDragAndResize();
+        }
+
+        function disableWebcam(e) {
+            if (e) e.stopPropagation();
+            const btn = document.getElementById('btnToggleWebcam');
+            const videoEl = document.getElementById('webcamVideo');
+
+            btn.classList.remove('active');
+            btn.classList.remove('pending');
+            webcamActive = false;
+
+            if (webcamStream) {
+                webcamStream.getTracks().forEach(t => t.stop());
+                webcamStream = null;
+            }
+            if (videoEl) {
+                videoEl.srcObject = null;
+            }
+            // Wipe the last live frame before recomputing, so switching the camera
+            // off takes it off screen immediately instead of freezing it there.
+            clearWebcamDisplayCanvas();
+            updateWebcamOverlayVisibility();
+        }
+
+        async function startWebcamStream() {
+            if (webcamStream) {
+                webcamStream.getTracks().forEach(t => t.stop());
+                webcamStream = null;
+            }
+
+            const videoEl = document.getElementById('webcamVideo');
+            if (!videoEl) return;
+
+            try {
+                let stream = null;
+                const videoConstraints = {
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                    frameRate: { ideal: 30 }
+                };
+                if (selectedCameraDeviceId) {
+                    videoConstraints.deviceId = { ideal: selectedCameraDeviceId };
+                }
+
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: videoConstraints,
+                        audio: false
+                    });
+                } catch (e1) {
+                    console.warn("Retrying getUserMedia with generic constraints...", e1);
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: true,
+                        audio: false
+                    });
+                }
+
+                webcamStream = stream;
+                videoEl.srcObject = webcamStream;
+                await videoEl.play();
+
+                populateCameraList();
+                await initMediaPipeSegmentation();
+
+                requestAnimationFrame(processWebcamFrameLoop);
+            } catch (err) {
+                console.error("Camera access error:", err);
+                alert("Accès caméra impossible : " + err.message);
+                disableWebcam();
+            }
+        }
+
+        function renderFallbackDirectWebcam(videoEl) {
+            const displayCanvas = document.getElementById('webcamDisplayCanvas');
+            if (!displayCanvas) return;
+
+            const rawW = videoEl.videoWidth || 640;
+            const rawH = videoEl.videoHeight || 480;
+            const canvasDim = 720;
+            if (displayCanvas.width !== canvasDim || displayCanvas.height !== canvasDim) {
+                displayCanvas.width = canvasDim;
+                displayCanvas.height = canvasDim;
+            }
+
+            const zoom = Math.max(0.75, Math.min(3.0, webcamState.camZoom || 1.0));
+            const baseSide = Math.min(rawW, rawH);
+            const cropSide = Math.min(baseSide, (baseSide * 0.75) / zoom);
+            const maxPanX = (rawW - cropSide) / 2;
+            const maxPanY = (rawH - cropSide) / 2;
+            const panXRatio = Math.max(-1.0, Math.min(1.0, webcamState.camPanX || 0));
+            const panYRatio = Math.max(-1.0, Math.min(1.0, webcamState.camPanY || 0));
+
+            let sx = (rawW - cropSide) / 2 + (panXRatio * maxPanX);
+            let sy = (rawH - cropSide) / 2 + (panYRatio * maxPanY);
+            sx = Math.max(0, Math.min(rawW - cropSide, sx));
+            sy = Math.max(0, Math.min(rawH - cropSide, sy));
+
+            const dCtx = displayCanvas.getContext('2d');
+            dCtx.save();
+            dCtx.clearRect(0, 0, canvasDim, canvasDim);
+            if (webcamState.mirrored) {
+                dCtx.translate(canvasDim, 0);
+                dCtx.scale(-1, 1);
+            }
+            dCtx.drawImage(videoEl, sx, sy, cropSide, cropSide, 0, 0, canvasDim, canvasDim);
+            dCtx.restore();
+
+            if (recordingState === 'recording') {
+                webcamRecordCtx.save();
+                webcamRecordCtx.clearRect(0, 0, 720, 720);
+                if (webcamState.mirrored) {
+                    webcamRecordCtx.translate(720, 0);
+                    webcamRecordCtx.scale(-1, 1);
+                }
+                webcamRecordCtx.drawImage(videoEl, sx, sy, cropSide, cropSide, 0, 0, 720, 720);
+                webcamRecordCtx.restore();
+            }
+        }
+
+        let isWebcamPlaybackActive = false;
+        let currentPlaybackVideoTakeId = null;
+        let currentPlaybackVideoSrc = null;
+        let playbackVideoSeekable = false;   // the take's duration has been settled
+
+        function getVideoClipAtTime(timeline, t) {
+            if (!timeline || timeline.length === 0) return null;
+            let acc = 0.0;
+            for (let clip of timeline) {
+                if (t >= acc && t <= acc + clip.duration) {
+                    return {
+                        takeId: clip.takeId,
+                        srcTime: clip.srcStart + (t - acc),
+                        clipStart: acc,
+                        clipEnd: acc + clip.duration
+                    };
+                }
+                acc += clip.duration;
+            }
+            // Past the end of the camera timeline (audio runs longer than any
+            // filmed clip): no camera here — let the base slide show.
+            return null;
+        }
+
+
+        function renderWebcamPlaybackFrame(targetTime) {
+            const slide = slides[currentIndex];
+            if (!slideHasCamera(slide)) {
+                return false;
+            }
+
+            const clipInfo = getVideoClipAtTime(slide.videoTimeline, targetTime);
+            // No clip, or a no-camera gap (takeId null) → show the bare slide.
+            if (!clipInfo || !clipInfo.takeId || clipInfo.takeId === 'gap') return false;
+
+            const playbackVid = document.getElementById('webcamPlaybackVideo');
+            if (!playbackVid) return false;
+
+            // Server mode streams the take; browser mode plays it from IndexedDB.
+            const expectedSrc = takeSrcFor(slide.number, clipInfo.takeId);
+            // Not resolved yet (browser mode, still loading): show nothing rather
+            // than leaving the previous take's last frame on screen.
+            if (!expectedSrc) return false;
+
+            // Compare against the src we last assigned rather than playbackVid.src,
+            // which the element normalises — the source would otherwise be
+            // reassigned on every frame.
+            if (currentPlaybackVideoTakeId !== clipInfo.takeId || currentPlaybackVideoSrc !== expectedSrc) {
+                currentPlaybackVideoTakeId = clipInfo.takeId;
+                currentPlaybackVideoSrc = expectedSrc;
+                playbackVideoSeekable = false;
+                playbackVid.src = expectedSrc;
+                const pendingSrc = expectedSrc;
+                const wantedTime = clipInfo.srcTime;
+                // Teach the element the file's real duration before asking it to
+                // move anywhere, otherwise every later seek is a no-op and the
+                // take freezes on its first frame.
+                makeVideoSeekable(playbackVid).then(() => {
+                    if (currentPlaybackVideoSrc !== pendingSrc) return;   // moved on
+                    playbackVideoSeekable = true;
+                    try { playbackVid.currentTime = wantedTime; } catch (e) {}
+                    if (isPlaying) playbackVid.play().catch(() => {});
+                });
+                // Nothing to show until the scan is done: better a blank moment
+                // than a frame frozen at the wrong place.
+                return false;
+            }
+
+            if (!playbackVideoSeekable) return false;
+
+            if (Math.abs(playbackVid.currentTime - clipInfo.srcTime) > 0.25) {
+                playbackVid.currentTime = clipInfo.srcTime;
+            }
+            if (playbackVid.paused && isPlaying) {
+                playbackVid.play().catch(() => {});
+            }
+
+            return playbackVid.readyState >= 2;
+        }
+
+        async function processWebcamFrameLoop() {
+            const slide = slides[currentIndex];
+            const hasSlideVideo = slideHasCamera(slide);
+
+            if (!webcamActive && !(isPlaying && hasSlideVideo)) {
+                return;
+            }
+
+            // 1. If audio is playing AND slide has recorded video, segment playback video in real time
+            if (isPlaying && hasSlideVideo) {
+                isWebcamPlaybackActive = true;
+                const isReady = renderWebcamPlaybackFrame(playheadPosition);
+                const playbackVid = document.getElementById('webcamPlaybackVideo');
+
+                // Re-evaluate every frame: the timeline can hold gaps, so the
+                // camera must vanish over them instead of leaving a frozen frame.
+                updateWebcamOverlayVisibility();
+
+                if (isReady && playbackVid && !playbackVid.paused && !playbackVid.ended) {
+                    if (selfieSegmentation && !isWebcamProcessing) {
+                        isWebcamProcessing = true;
+                        try {
+                            await selfieSegmentation.send({ image: playbackVid });
+                        } catch (err) {}
+                        isWebcamProcessing = false;
+                    } else if (!selfieSegmentation) {
+                        const displayCanvas = document.getElementById('webcamDisplayCanvas');
+                        if (displayCanvas) {
+                            const dCtx = displayCanvas.getContext('2d');
+                            dCtx.clearRect(0, 0, 720, 720);
+                            dCtx.drawImage(playbackVid, 0, 0, 720, 720);
+                        }
+                    }
+                }
+            } else if (isWebcamPlaybackActive) {
+                // Playback stopped -> restore live webcam
+                isWebcamPlaybackActive = false;
+                currentPlaybackVideoTakeId = null;
+                currentPlaybackVideoSrc = null;
+                playbackVideoSeekable = false;
+                const playbackVid = document.getElementById('webcamPlaybackVideo');
+                if (playbackVid) playbackVid.pause();
+
+                if (!webcamActive) {
+                    // No live camera to fall back to: take the recorded frame off
+                    // screen rather than leaving it frozen in the circle.
+                    updateWebcamOverlayVisibility();
+                    return;
+                }
+            }
+
+            // 2. If live webcam is active and not in playback mode, segment live camera feed
+            if (webcamActive && !isWebcamPlaybackActive) {
+                const videoEl = document.getElementById('webcamVideo');
+                if (videoEl && !videoEl.paused && !videoEl.ended && videoEl.readyState >= 2) {
+                    if (selfieSegmentation && !isWebcamProcessing) {
+                        isWebcamProcessing = true;
+                        try {
+                            await selfieSegmentation.send({ image: videoEl });
+                        } catch (err) {
+                            // ignore dropped frames
+                        }
+                        isWebcamProcessing = false;
+                    } else if (!selfieSegmentation) {
+                        // Fallback direct rendering with full zoom/pan
+                        renderFallbackDirectWebcam(videoEl);
+                    }
+                }
+            }
+
+            if (webcamActive || (isPlaying && hasSlideVideo)) {
+                requestAnimationFrame(processWebcamFrameLoop);
+            }
+        }
+
+        function onSelfieSegmentationResults(results) {
+            const slide = slides[currentIndex];
+            // MediaPipe answers asynchronously, so a result issued just before the
+            // playhead entered a no-camera stretch can land after the canvas was
+            // cleared and paint the previous frame back. Apply the same rule as
+            // the overlay — live camera, or playback sitting on filmed footage —
+            // rather than the looser "this slide owns footage".
+            if (!cameraShouldBeVisible()) return;
+
+            const displayCanvas = document.getElementById('webcamDisplayCanvas');
+            if (!displayCanvas) return;
+
+            const img = results.image;
+            const mask = results.segmentationMask;
+
+            const rawW = img.videoWidth || img.width || 640;
+            const rawH = img.videoHeight || img.height || 480;
+
+            const maskW = mask ? (mask.width || mask.videoWidth || rawW) : rawW;
+            const maskH = mask ? (mask.height || mask.videoHeight || rawH) : rawH;
+
+            const canvasDim = 720;
+            if (displayCanvas.width !== canvasDim || displayCanvas.height !== canvasDim) {
+                displayCanvas.width = canvasDim;
+                displayCanvas.height = canvasDim;
+            }
+            if (segmentBufferCanvas.width !== canvasDim || segmentBufferCanvas.height !== canvasDim) {
+                segmentBufferCanvas.width = canvasDim;
+                segmentBufferCanvas.height = canvasDim;
+            }
+
+            let sx, sy, sw, sh, maskSx, maskSy, maskSw, maskSh, isMirrored;
+
+            if (isWebcamPlaybackActive) {
+                // Playback video framing is already encoded in the recorded file
+                sx = 0;
+                sy = 0;
+                sw = rawW;
+                sh = rawH;
+                maskSx = 0;
+                maskSy = 0;
+                maskSw = maskW;
+                maskSh = maskH;
+                isMirrored = false;
+            } else {
+                // Live camera feed: apply zoom & pan & mirror
+                const zoom = Math.max(0.75, Math.min(3.0, webcamState.camZoom || 1.0));
+                const baseSide = Math.min(rawW, rawH);
+                const cropSide = Math.min(baseSide, (baseSide * 0.75) / zoom);
+
+                const maxPanX = (rawW - cropSide) / 2;
+                const maxPanY = (rawH - cropSide) / 2;
+
+                const panXRatio = Math.max(-1.0, Math.min(1.0, webcamState.camPanX || 0));
+                const panYRatio = Math.max(-1.0, Math.min(1.0, webcamState.camPanY || 0));
+
+                sx = (rawW - cropSide) / 2 + (panXRatio * maxPanX);
+                sy = (rawH - cropSide) / 2 + (panYRatio * maxPanY);
+                sx = Math.max(0, Math.min(rawW - cropSide, sx));
+                sy = Math.max(0, Math.min(rawH - cropSide, sy));
+                sw = cropSide;
+                sh = cropSide;
+
+                const normX = sx / rawW;
+                const normY = sy / rawH;
+                const normW = sw / rawW;
+                const normH = sh / rawH;
+
+                maskSx = normX * maskW;
+                maskSy = normY * maskH;
+                maskSw = normW * maskW;
+                maskSh = normH * maskH;
+                isMirrored = !!webcamState.mirrored;
+            }
+
+            const dCtx = displayCanvas.getContext('2d');
+            dCtx.save();
+            dCtx.clearRect(0, 0, canvasDim, canvasDim);
+
+            if (webcamState.bgMode === 'original' && !isWebcamPlaybackActive) {
+                if (isMirrored) {
+                    dCtx.translate(canvasDim, 0);
+                    dCtx.scale(-1, 1);
+                }
+                dCtx.drawImage(img, sx, sy, sw, sh, 0, 0, canvasDim, canvasDim);
+            } else if (webcamState.bgMode === 'blur' && !isWebcamPlaybackActive) {
+                // 1. Blurred background
+                dCtx.save();
+                if (isMirrored) {
+                    dCtx.translate(canvasDim, 0);
+                    dCtx.scale(-1, 1);
+                }
+                dCtx.filter = 'blur(16px)';
+                dCtx.drawImage(img, sx, sy, sw, sh, 0, 0, canvasDim, canvasDim);
+                dCtx.restore();
+
+                // 2. Segmented sharp person
+                segmentBufferCtx.save();
+                segmentBufferCtx.clearRect(0, 0, canvasDim, canvasDim);
+                if (isMirrored) {
+                    segmentBufferCtx.translate(canvasDim, 0);
+                    segmentBufferCtx.scale(-1, 1);
+                }
+                if (mask) {
+                    segmentBufferCtx.drawImage(mask, maskSx, maskSy, maskSw, maskSh, 0, 0, canvasDim, canvasDim);
+                    segmentBufferCtx.globalCompositeOperation = 'source-in';
+                }
+                segmentBufferCtx.drawImage(img, sx, sy, sw, sh, 0, 0, canvasDim, canvasDim);
+                segmentBufferCtx.globalCompositeOperation = 'source-over';
+                segmentBufferCtx.restore();
+
+                dCtx.drawImage(segmentBufferCanvas, 0, 0, canvasDim, canvasDim);
+            } else {
+                // Pure transparent cutout!
+                segmentBufferCtx.save();
+                segmentBufferCtx.clearRect(0, 0, canvasDim, canvasDim);
+                if (isMirrored) {
+                    segmentBufferCtx.translate(canvasDim, 0);
+                    segmentBufferCtx.scale(-1, 1);
+                }
+                if (mask) {
+                    segmentBufferCtx.drawImage(mask, maskSx, maskSy, maskSw, maskSh, 0, 0, canvasDim, canvasDim);
+                    segmentBufferCtx.globalCompositeOperation = 'source-in';
+                }
+                segmentBufferCtx.drawImage(img, sx, sy, sw, sh, 0, 0, canvasDim, canvasDim);
+                segmentBufferCtx.globalCompositeOperation = 'source-over';
+                segmentBufferCtx.restore();
+
+                dCtx.drawImage(segmentBufferCanvas, 0, 0, canvasDim, canvasDim);
+            }
+
+            dCtx.restore();
+
+            // If recording is active, draw clean unmasked RGB frame to recording canvas
+            if (recordingState === 'recording' && !isWebcamPlaybackActive) {
+                webcamRecordCtx.save();
+                webcamRecordCtx.clearRect(0, 0, 720, 720);
+                if (isMirrored) {
+                    webcamRecordCtx.translate(720, 0);
+                    webcamRecordCtx.scale(-1, 1);
+                }
+                webcamRecordCtx.drawImage(img, sx, sy, sw, sh, 0, 0, 720, 720);
+                webcamRecordCtx.restore();
+            }
+        }
+
+        function cycleWebcamShape(e) {
+            if (e) e.stopPropagation();
+            const shapes = ['cutout', 'circle', 'rect'];
+            const nextIdx = (shapes.indexOf(webcamState.shape) + 1) % shapes.length;
+            webcamState.shape = shapes[nextIdx];
+            updateWebcamOverlayDOM();
+        }
+
+        function cycleWebcamBgMode(e) {
+            if (e) e.stopPropagation();
+            const modes = ['cutout', 'blur', 'original'];
+            const nextIdx = (modes.indexOf(webcamState.bgMode) + 1) % modes.length;
+            webcamState.bgMode = modes[nextIdx];
+            updateWebcamOverlayDOM();
+        }
+
+        function toggleWebcamMirror(e) {
+            if (e) e.stopPropagation();
+            webcamState.mirrored = !webcamState.mirrored;
+            updateWebcamOverlayDOM();
+        }
+
+        function adjustWebcamZoom(delta, e) {
+            if (e) e.stopPropagation();
+            webcamState.camZoom = Math.max(0.75, Math.min(3.0, (webcamState.camZoom || 1.0) + delta));
+            updateWebcamOverlayDOM();
+            showSavedToast(`🔍 ${t('toastZoom')} ${webcamState.camZoom.toFixed(1)}x`);
+        }
+
+        function resetWebcamFraming(e) {
+            if (e) e.stopPropagation();
+            webcamState.camZoom = 1.0;
+            webcamState.camPanX = 0.0;
+            webcamState.camPanY = 0.0;
+            updateWebcamOverlayDOM();
+            showSavedToast(`🔍 ${t('toastResetFraming')}`);
+        }
+
+        function clampWebcamPositionAndSize() {
+            // Clamping rules to ensure the webcam NEVER exceeds the 16:9 slide bounds:
+            // max size: 0.50 (50% of width, which equals 50% * 16/9 = 88.8% of slide height)
+            webcamState.sizePct = Math.max(0.10, Math.min(0.50, webcamState.sizePct));
+            const maxXPct = Math.max(0, 1.0 - webcamState.sizePct);
+            const heightPct = webcamState.sizePct * (16 / 9);
+            const maxYPct = Math.max(0, 1.0 - heightPct);
+            
+            webcamState.xPct = Math.max(0, Math.min(maxXPct, webcamState.xPct));
+            webcamState.yPct = Math.max(0, Math.min(maxYPct, webcamState.yPct));
+        }
+
+        let saveLayoutTimeout = null;
+        function saveProjectWebcamLayout() {
+            if (!currentProjectId) return;
+            try {
+                localStorage.setItem(`slidepunch_webcam_layout_${currentProjectId}`, JSON.stringify(webcamState));
+            } catch(e) {}
+        }
+
+        async function loadProjectWebcamLayout(projId) {
+            const id = projId || currentProjectId;
+            if (!id) return;
+            try {
+                const saved = localStorage.getItem(`slidepunch_webcam_layout_${id}`);
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    Object.assign(webcamState, parsed);
+                }
+            } catch(e) {}
+        }
+
+        // True only if the slide actually holds filmed footage. A timeline made
+        // only of gaps (takeId null) means the camera was removed, so it must not
+        // bring the overlay back.
+        function slideHasCamera(slide) {
+            if (!slide) return false;
+            // A timeline that exists is authoritative, empty included: emptying it
+            // is how "the camera was removed" is expressed. Falling back to the
+            // hasVideo flag there resurrected the camera from a stale server value.
+            if (Array.isArray(slide.videoTimeline)) {
+                return slide.videoTimeline.some(c => !!c.takeId);
+            }
+            return !!slide.hasVideo;
+        }
+
+        // Single source of truth for whether the camera overlay is on screen.
+        // It shows only when there is something real to display: a LIVE camera
+        // stream, or recorded footage on this slide. Showing it merely because
+        // the camera was requested left the circle and its whole toolbar
+        // floating over the slide with no picture behind them.
+        // ==========================================
+        // CAMERA TAKE STORAGE
+        // Takes live in IndexedDB and are handed to the <video> element as blob
+        // URLs. Everything above this layer only ever sees takeSrcFor().
+        // ==========================================
+        const takeObjectUrls = {};   // key -> blob URL, cached for the session
+
+        function videoKey(projectId, slideNum, takeId) {
+            return `${projectId}_${slideNum}_${takeId}`;
+        }
+
+        async function putCameraTake(projectId, slideNum, takeId, blob) {
+            if (!db) return;
+            const key = videoKey(projectId, slideNum, takeId);
+            await new Promise((resolve, reject) => {
+                const tx = db.transaction(['video'], 'readwrite');
+                tx.objectStore('video').put({ key, blob, updatedAt: new Date().toISOString() });
+                tx.oncomplete = resolve;
+                tx.onerror = () => reject(tx.error);
+            });
+            if (takeObjectUrls[key]) URL.revokeObjectURL(takeObjectUrls[key]);
+            takeObjectUrls[key] = URL.createObjectURL(blob);
+        }
+
+        async function loadCameraTakeUrl(projectId, slideNum, takeId) {
+            const key = videoKey(projectId, slideNum, takeId);
+            if (takeObjectUrls[key]) return takeObjectUrls[key];
+            if (!db) return null;
+            const rec = await new Promise(r => {
+                const tx = db.transaction(['video'], 'readonly');
+                const req = tx.objectStore('video').get(key);
+                req.onsuccess = () => r(req.result);
+                req.onerror = () => r(null);
+            });
+            if (!rec || !rec.blob) return null;
+            takeObjectUrls[key] = URL.createObjectURL(rec.blob);
+            return takeObjectUrls[key];
+        }
+
+        // Resolve every take a slide references, so playback can stay synchronous.
+        async function preloadSlideTakes(slide) {
+            if (!slide || !Array.isArray(slide.videoTimeline)) return;
+            const ids = [...new Set(slide.videoTimeline.map(c => c.takeId).filter(Boolean))];
+            for (const id of ids) {
+                await loadCameraTakeUrl(currentProjectId, slide.number, id);
+            }
+        }
+
+        // The blob URL for one take. Null when it has not been resolved yet,
+        // which keeps the camera hidden rather than showing a stale frame.
+        function takeSrcFor(slideNum, takeId) {
+            return takeObjectUrls[videoKey(currentProjectId, slideNum, takeId)] || null;
+        }
+
+        async function deleteCameraTakesForSlide(projectId, slideNum) {
+            if (!db) return;
+            await new Promise(resolve => {
+                const tx = db.transaction(['video'], 'readwrite');
+                const store = tx.objectStore('video');
+                const req = store.getAllKeys();
+                req.onsuccess = () => {
+                    const prefix = `${projectId}_${slideNum}_`;
+                    (req.result || []).forEach(k => {
+                        if (typeof k === 'string' && k.startsWith(prefix)) {
+                            store.delete(k);
+                            if (takeObjectUrls[k]) {
+                                URL.revokeObjectURL(takeObjectUrls[k]);
+                                delete takeObjectUrls[k];
+                            }
+                        }
+                    });
+                };
+                tx.oncomplete = resolve;
+                tx.onerror = resolve;
+            });
+        }
+
+        // Is there filmed footage at this exact point of the slide timeline?
+        // Used per frame during playback so the camera appears and disappears
+        // exactly where it was filmed, matching the exported video.
+        function hasCameraAtTime(slide, t) {
+            if (!slideHasCamera(slide)) return false;
+            const clip = getVideoClipAtTime(slide.videoTimeline || [], t);
+            return !!(clip && clip.takeId && clip.takeId !== 'gap');
+        }
+
+        // The display canvas keeps whatever was last drawn on it. Whenever no
+        // camera should be on screen it has to be wiped, otherwise the last live
+        // frame stays frozen in the circle.
+        function clearWebcamDisplayCanvas() {
+            const displayCanvas = document.getElementById('webcamDisplayCanvas');
+            if (!displayCanvas) return;
+            const ctx = displayCanvas.getContext('2d');
+            if (ctx) ctx.clearRect(0, 0, displayCanvas.width, displayCanvas.height);
+        }
+
+        // The single rule for "should the camera be on screen right now". Both the
+        // overlay and the drawing code read it, so they cannot drift apart.
+        function cameraShouldBeVisible() {
+            const live = webcamActive && !!webcamStream;
+            const slide = slides[currentIndex];
+            if (isPlaying && slideHasCamera(slide)) {
+                return hasCameraAtTime(slide, playheadPosition);
+            }
+            return live;
+        }
+
+        function updateWebcamOverlayVisibility() {
+            const overlay = document.getElementById('webcamOverlay');
+            if (!overlay) return false;
+            const live = webcamActive && !!webcamStream;
+            const slide = slides[currentIndex];
+            const show = cameraShouldBeVisible();
+            overlay.style.display = show ? 'flex' : 'none';
+            if (!show) clearWebcamDisplayCanvas();
+            const camSelect = document.getElementById('cameraSelect');
+            if (camSelect) camSelect.style.display = live ? 'inline-block' : 'none';
+            return show;
+        }
+
+        function updateWebcamOverlayDOM() {
+            const overlay = document.getElementById('webcamOverlay');
+            if (!overlay) return;
+
+            clampWebcamPositionAndSize();
+
+            // Apply Classes
+            overlay.className = `webcam-overlay shape-${webcamState.shape}`;
+            
+            // Apply Position & Size strictly bounded inside 16:9 container
+            overlay.style.left = `${webcamState.xPct * 100}%`;
+            overlay.style.top = `${webcamState.yPct * 100}%`;
+            overlay.style.width = `${webcamState.sizePct * 100}%`;
+            overlay.style.aspectRatio = '1 / 1';
+            overlay.style.height = 'auto';
+
+            // Update Toolbar Button Labels & Icons
+            const shapeIcon = document.getElementById('txtWebcamShapeIcon');
+            const shapeLbl = document.getElementById('txtWebcamShapeLbl');
+            if (webcamState.shape === 'cutout') {
+                if (shapeIcon) shapeIcon.textContent = '👤';
+                if (shapeLbl) shapeLbl.textContent = t('webcamShapeCutout') || 'Silhouette';
+            } else if (webcamState.shape === 'circle') {
+                if (shapeIcon) shapeIcon.textContent = '⭕';
+                if (shapeLbl) shapeLbl.textContent = t('webcamShapeCircle') || 'Bulle';
+            } else {
+                if (shapeIcon) shapeIcon.textContent = '⏹';
+                if (shapeLbl) shapeLbl.textContent = t('webcamShapeRect') || 'Rectangle';
+            }
+
+            const bgIcon = document.getElementById('txtWebcamBgIcon');
+            const bgLbl = document.getElementById('txtWebcamBgLbl');
+            if (webcamState.bgMode === 'cutout') {
+                if (bgIcon) bgIcon.textContent = '✨';
+                if (bgLbl) bgLbl.textContent = t('webcamBgCutout') || 'Détouré';
+            } else if (webcamState.bgMode === 'blur') {
+                if (bgIcon) bgIcon.textContent = '🌫️';
+                if (bgLbl) bgLbl.textContent = t('webcamBgBlur') || 'Flou';
+            } else {
+                if (bgIcon) bgIcon.textContent = '📷';
+                if (bgLbl) bgLbl.textContent = t('webcamBgOriginal') || 'Normal';
+            }
+
+            const zoomLbl = document.getElementById('txtWebcamZoomLbl');
+            if (zoomLbl) {
+                const z = webcamState.camZoom || 1.0;
+                zoomLbl.textContent = `🔍 ${z.toFixed(1)}x`;
+            }
+
+            const toolbarWrap = document.getElementById('webcamToolbarWrap');
+            if (toolbarWrap) {
+                if (webcamState.yPct < 0.14) {
+                    toolbarWrap.classList.add('dock-below');
+                } else {
+                    toolbarWrap.classList.remove('dock-below');
+                }
+            }
+
+            saveProjectWebcamLayout();
+        }
+
+        let isWebcamInteracting = false;
+        let webcamDragMode = null; // 'move' | 'pan' | 'tl' | 'tr' | 'bl' | 'br'
+        let dragStartMouse = { x: 0, y: 0 };
+        let dragStartState = { xPct: 0, yPct: 0, sizePct: 0, camPanX: 0, camPanY: 0, camZoom: 1.0 };
+
+        function setupWebcamDragAndResize() {
+            const overlay = document.getElementById('webcamOverlay');
+            const container = document.getElementById('slideImgContainer');
+            const canvasWrap = document.getElementById('webcamCanvasWrap');
+            const displayCanvas = document.getElementById('webcamDisplayCanvas');
+            if (!overlay || !container) return;
+
+            overlay.oncontextmenu = (e) => {
+                // Prevent browser context menu so right-click pan works cleanly
+                e.preventDefault();
+            };
+
+            overlay.onpointerdown = (e) => {
+                if (e.target.closest('.webcam-toolbar') || e.target.closest('.webcam-toolbar-wrap')) return;
+                
+                const handle = e.target.closest('.webcam-handle');
+                if (handle) {
+                    webcamDragMode = handle.dataset.handle; // 'tl', 'tr', 'bl', 'br'
+                } else if (e.shiftKey || e.button === 2 || e.button === 1) {
+                    webcamDragMode = 'pan'; // Shift+Drag, Right-click or Middle-click pans camera framing
+                } else {
+                    webcamDragMode = 'move';
+                }
+
+                isWebcamInteracting = true;
+                overlay.classList.add('dragging');
+                dragStartMouse = { x: e.clientX, y: e.clientY };
+                dragStartState = { 
+                    xPct: webcamState.xPct, 
+                    yPct: webcamState.yPct, 
+                    sizePct: webcamState.sizePct,
+                    camPanX: webcamState.camPanX || 0,
+                    camPanY: webcamState.camPanY || 0,
+                    camZoom: webcamState.camZoom || 1.0
+                };
+
+                overlay.setPointerCapture(e.pointerId);
+                e.preventDefault();
+                e.stopPropagation();
+            };
+
+            overlay.onpointermove = (e) => {
+                if (!isWebcamInteracting) return;
+
+                const rect = container.getBoundingClientRect();
+                if (rect.width <= 0 || rect.height <= 0) return;
+
+                const dxPct = (e.clientX - dragStartMouse.x) / rect.width;
+                const dyPct = (e.clientY - dragStartMouse.y) / rect.height;
+
+                if (webcamDragMode === 'pan') {
+                    // Pan framing inside bubble (Loom style)
+                    const panSpeed = 3.5;
+                    const panDx = (dxPct * panSpeed) * (webcamState.mirrored ? -1 : 1);
+                    const panDy = dyPct * panSpeed;
+                    webcamState.camPanX = Math.max(-1.0, Math.min(1.0, dragStartState.camPanX + panDx));
+                    webcamState.camPanY = Math.max(-1.0, Math.min(1.0, dragStartState.camPanY + panDy));
+                } else if (webcamDragMode === 'move') {
+                    webcamState.xPct = dragStartState.xPct + dxPct;
+                    webcamState.yPct = dragStartState.yPct + dyPct;
+                    clampWebcamPositionAndSize();
+                } else if (webcamDragMode === 'br') {
+                    const dSize = Math.max(dxPct, dyPct / (16 / 9));
+                    webcamState.sizePct = dragStartState.sizePct + dSize;
+                    clampWebcamPositionAndSize();
+                } else if (webcamDragMode === 'tl') {
+                    const dSize = -Math.min(dxPct, dyPct / (16 / 9));
+                    const newSize = Math.max(0.10, Math.min(0.50, dragStartState.sizePct + dSize));
+                    const delta = newSize - dragStartState.sizePct;
+                    webcamState.sizePct = newSize;
+                    webcamState.xPct = dragStartState.xPct - delta;
+                    webcamState.yPct = dragStartState.yPct - (delta * 16 / 9);
+                    clampWebcamPositionAndSize();
+                } else if (webcamDragMode === 'tr') {
+                    const dSize = Math.max(dxPct, -dyPct / (16 / 9));
+                    const newSize = Math.max(0.10, Math.min(0.50, dragStartState.sizePct + dSize));
+                    const delta = newSize - dragStartState.sizePct;
+                    webcamState.sizePct = newSize;
+                    webcamState.yPct = dragStartState.yPct - (delta * 16 / 9);
+                    clampWebcamPositionAndSize();
+                } else if (webcamDragMode === 'bl') {
+                    const dSize = Math.max(-dxPct, dyPct / (16 / 9));
+                    const newSize = Math.max(0.10, Math.min(0.50, dragStartState.sizePct + dSize));
+                    const delta = newSize - dragStartState.sizePct;
+                    webcamState.sizePct = newSize;
+                    webcamState.xPct = dragStartState.xPct - delta;
+                    clampWebcamPositionAndSize();
+                }
+
+                updateWebcamOverlayDOM();
+            };
+
+            overlay.onpointerup = (e) => {
+                if (isWebcamInteracting) {
+                    isWebcamInteracting = false;
+                    webcamDragMode = null;
+                    overlay.classList.remove('dragging');
+                    try { overlay.releasePointerCapture(e.pointerId); } catch(err){}
+                }
+            };
+
+            // Unified wheel listener for face zoom
+            const onWheelZoom = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const step = (e.deltaY < 0 ? 0.10 : -0.10);
+                webcamState.camZoom = Math.max(0.75, Math.min(3.0, (webcamState.camZoom || 1.0) + step));
+                updateWebcamOverlayDOM();
+                showSavedToast(`🔍 ${t('toastZoom')} ${webcamState.camZoom.toFixed(1)}x`);
+            };
+
+            overlay.onwheel = onWheelZoom;
+            if (canvasWrap) canvasWrap.onwheel = onWheelZoom;
+            if (displayCanvas) displayCanvas.onwheel = onWheelZoom;
+        }
+
+        // ==========================================
+        // MICROPHONE SOURCE SELECTION & ENUMERATION
+        // ==========================================
 
         async function populateMicrophoneList() {
             if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
@@ -2368,7 +3770,6 @@
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
                 microphoneStream = stream;
 
-                // Re-populate microphone list once getUserMedia grants permission so device labels are available
                 populateMicrophoneList();
 
                 micSource = audioContext.createMediaStreamSource(stream);
@@ -2403,6 +3804,29 @@
                 micSource.connect(scriptProcessor);
                 scriptProcessor.connect(audioContext.destination);
 
+                // Start webcam recording if active
+                if (webcamActive) {
+                    try {
+                        const vStream = webcamRecordCanvas.captureStream(30);
+                        webcamRecordedChunks = [];
+                        const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+                            ? 'video/webm;codecs=vp9'
+                            : 'video/webm';
+                        webcamMediaRecorder = new MediaRecorder(vStream, {
+                            mimeType: mime,
+                            videoBitsPerSecond: 4000000
+                        });
+                        webcamMediaRecorder.ondataavailable = (e) => {
+                            if (e.data && e.data.size > 0) {
+                                webcamRecordedChunks.push(e.data);
+                            }
+                        };
+                        webcamMediaRecorder.start(100);
+                    } catch (e) {
+                        console.warn("Webcam recorder failed to start:", e);
+                    }
+                }
+
                 recordingState = 'recording';
                 updateControlUI();
 
@@ -2432,6 +3856,23 @@
             }
             if (scriptProcessor) scriptProcessor.disconnect();
             if (micSource) micSource.disconnect();
+
+            // Stop webcam recorder if active
+            let recordedCamBlob = null;
+            if (webcamMediaRecorder && webcamMediaRecorder.state !== 'inactive') {
+                try {
+                    await new Promise((resolve) => {
+                        webcamMediaRecorder.onstop = resolve;
+                        webcamMediaRecorder.stop();
+                    });
+                    if (webcamRecordedChunks.length > 0) {
+                        recordedCamBlob = new Blob(webcamRecordedChunks, { type: 'video/webm' });
+                    }
+                } catch (e) {
+                    console.warn("Error stopping webcam recorder:", e);
+                }
+                webcamMediaRecorder = null;
+            }
 
             const prefix = originalSamples.slice(0, punchInStartSample);
             const newTake = recordedChunkSamples;
@@ -2467,63 +3908,80 @@
             totalDuration = currentSamples.length / sampleRate;
             playheadPosition = (punchInStartSample + newTake.length) / sampleRate;
 
+            const newTakeDur = newTake.length / sampleRate;
+            const punchInTimeSec = punchInStartSample / sampleRate;
+            const takeId = 'take_' + Date.now();
+            const slide = slides[currentIndex];
+
+            // Keep the video timeline aligned with the (edited) audio timeline.
+            // The punched-in region [punchInTimeSec, punchInTimeSec+newTakeDur) is
+            // replaced in BOTH tracks. If a camera was recorded, splice in the cam
+            // take; if not, splice in a GAP (takeId:null) so the slide shows the
+            // base image there and the surrounding cam clips keep their positions.
+            // Skipping this on an audio-only punch-in is what made the camera
+            // "spread" onto regions that were never filmed.
+            const hadTimeline = slide.videoTimeline && slide.videoTimeline.length > 0;
+            if (recordedCamBlob) {
+                if (!hadTimeline || punchInStartSample === 0) {
+                    slide.videoTimeline = [{ takeId: takeId, srcStart: 0, srcEnd: newTakeDur, duration: newTakeDur }];
+                } else {
+                    slide.videoTimeline = spliceVideoTimeline(slide.videoTimeline, punchInTimeSec, newTakeDur, takeId);
+                }
+            } else if (hadTimeline) {
+                // Audio-only (re-)recording over a slide that already has camera.
+                if (punchInStartSample === 0) {
+                    // Full re-record with no camera: drop the camera entirely.
+                    slide.videoTimeline = [];
+                } else {
+                    // Replace only the punched-in span with a no-camera gap.
+                    slide.videoTimeline = spliceVideoTimeline(slide.videoTimeline, punchInTimeSec, newTakeDur, null);
+                }
+            }
+
             const wavBlob = encodeWAV(currentSamples, sampleRate);
-            await saveSlideAudio(wavBlob, true);
+            await saveSlideAudio(wavBlob, true, recordedCamBlob, takeId);
         }
 
-        async function saveSlideAudio(blob, preservePlayhead = true) {
+        async function saveSlideAudio(blob, preservePlayhead = true, recordedCamBlob = null, takeId = null) {
             const slide = slides[currentIndex];
             const dur = currentSamples.length / sampleRate;
 
-            if (isServerMode) {
+            // Save to IndexedDB
+            const tx = db.transaction(['audio'], 'readwrite');
+            const store = tx.objectStore('audio');
+            await store.put({
+                key: `${currentProjectId}_${slide.number}`,
+                blob: blob,
+                duration: dur,
+                updatedAt: new Date().toISOString()
+            });
+
+            // Store the camera take and the timeline too. Browser mode used to
+            // drop the recorded blob entirely, so the timeline claimed footage
+            // that no longer existed anywhere and playback showed a frozen
+            // frame instead of the recording.
+            if (recordedCamBlob && takeId) {
                 try {
-                    const res = await fetch(`/api/save_audio?project=${currentProjectId}&slide=${slide.number}`, {
-                        method: 'POST',
-                        body: blob
-                    });
-                    const data = await res.json();
-                    if (data.success) {
-                        slide.hasAudio = true;
-                        slide.audioDuration = data.duration;
-                        slide.audioUrl = data.audioUrl;
-                        recordingState = 'idle';
-                        showSavedToast();
-                        await fetchSlideAudioWav(preservePlayhead);
-                        renderSidebar();
-                        updateGlobalStats();
-                        updateControlUI();
-                    } else {
-                        alert(t('modalErrorTitle') + " : " + data.error);
-                        recordingState = 'idle';
-                        updateControlUI();
-                    }
-                } catch (err) {
-                    alert("Upload Error : " + err.message);
-                    recordingState = 'idle';
-                    updateControlUI();
+                    await putCameraTake(currentProjectId, slide.number, takeId, recordedCamBlob);
+                } catch (e) {
+                    console.warn("Failed to store camera take:", e);
                 }
-            } else {
-                // Save to IndexedDB
-                const tx = db.transaction(['audio'], 'readwrite');
-                const store = tx.objectStore('audio');
-                await store.put({
-                    key: `${currentProjectId}_${slide.number}`,
-                    blob: blob,
-                    duration: dur,
-                    updatedAt: new Date().toISOString()
-                });
-
-                slide.hasAudio = true;
-                slide.audioDuration = dur;
-                slide.audioBlob = blob;
-                recordingState = 'idle';
-
-                showSavedToast();
-                await fetchSlideAudioWav(preservePlayhead);
-                renderSidebar();
-                updateGlobalStats();
-                updateControlUI();
             }
+            if (Array.isArray(slide.videoTimeline)) {
+                slide.hasVideo = slide.videoTimeline.some(c => !!c.takeId);
+                await persistSlideRecord(slide);
+            }
+
+            slide.hasAudio = true;
+            slide.audioDuration = dur;
+            slide.audioBlob = blob;
+            recordingState = 'idle';
+
+            showSavedToast();
+            await fetchSlideAudioWav(preservePlayhead);
+            renderSidebar();
+            updateGlobalStats();
+            updateControlUI();
         }
 
         function showSavedToast() {
@@ -2536,10 +3994,198 @@
         }
 
         // ==========================================
-        // EDIT MODE: CUT, COPY & PASTE AUDIO CLIPBOARD
+        // VIDEO TIMELINE EDL ENGINE (NON-LINEAR SLICE / CUT / PASTE / PUNCH-IN)
         // ==========================================
 
-        let audioClipboard = null;
+        // Write a slide's own record back to IndexedDB, merging into whatever is
+        // already stored so the fields the studio does not touch survive.
+        async function persistSlideRecord(slide) {
+            if (!db || !slide) return;
+            const key = `${currentProjectId}_${slide.number}`;
+            await new Promise(resolve => {
+                const tx = db.transaction(['slides'], 'readwrite');
+                const store = tx.objectStore('slides');
+                const req = store.get(key);
+                req.onsuccess = () => {
+                    const rec = req.result || { key, projectId: currentProjectId, number: slide.number };
+                    rec.videoTimeline = slide.videoTimeline || [];
+                    rec.webcamLayout = { ...webcamState };
+                    rec.hasVideo = (slide.videoTimeline || []).some(c => !!c.takeId);
+                    store.put(rec);
+                };
+                tx.oncomplete = resolve;
+                tx.onerror = resolve;
+            });
+        }
+
+        // The timeline lives on the slide's own record. Every edit that changes
+        // it — punch-in gaps, cut, paste — must come through here, or it survives
+        // only in memory and is lost on reload.
+        async function saveSlideTimeline(projectId, slideNum, timeline, layout) {
+            if (!projectId || !slideNum) return;
+            const slide = slides.find(s => s.number === slideNum);
+            if (slide) await persistSlideRecord(slide);
+        }
+
+        // A "gap" clip (takeId null) means: no camera during this span. Gaps are
+        // first-class timeline entries so that the video timeline always covers
+        // exactly the same span as the audio track. Any edit that changes audio
+        // length MUST make the matching change here, or later camera clips slide
+        // out of position and appear over footage that was never filmed.
+        function makeVideoGap(duration) {
+            return { takeId: null, srcStart: 0, srcEnd: duration, duration: duration };
+        }
+
+        function timelineTotalDuration(timeline) {
+            if (!timeline || timeline.length === 0) return 0;
+            return timeline.reduce((acc, c) => acc + (c.duration || 0), 0);
+        }
+
+        // Ensure `timeline` spans at least `targetDur` by appending a trailing gap.
+        function padTimelineToDuration(timeline, targetDur) {
+            const clips = (timeline || []).map(c => ({ ...c }));
+            const missing = targetDur - timelineTotalDuration(clips);
+            if (missing > 0.001) clips.push(makeVideoGap(missing));
+            return clips;
+        }
+
+        function sliceVideoTimeline(timeline, tStart, tEnd) {
+            if (!timeline || timeline.length === 0 || tEnd <= tStart) return null;
+            const result = [];
+            let curTime = 0.0;
+            for (const clip of timeline) {
+                const clipStart = curTime;
+                const clipEnd = curTime + clip.duration;
+                if (clipEnd > tStart && clipStart < tEnd) {
+                    const overlapStart = Math.max(clipStart, tStart);
+                    const overlapEnd = Math.min(clipEnd, tEnd);
+                    const srcOffsetStart = clip.srcStart + (overlapStart - clipStart);
+                    const srcOffsetEnd = clip.srcStart + (overlapEnd - clipStart);
+                    const dur = overlapEnd - overlapStart;
+                    if (dur > 0.001) {
+                        result.push({
+                            takeId: clip.takeId,
+                            srcStart: srcOffsetStart,
+                            srcEnd: srcOffsetEnd,
+                            duration: dur
+                        });
+                    }
+                }
+                curTime = clipEnd;
+            }
+            return result.length > 0 ? result : null;
+        }
+
+        function cutVideoTimeline(timeline, tStart, tEnd) {
+            if (!timeline || timeline.length === 0 || tEnd <= tStart) return timeline || [];
+            const newTimeline = [];
+            let curTime = 0.0;
+            for (const clip of timeline) {
+                const clipStart = curTime;
+                const clipEnd = curTime + clip.duration;
+                if (clipEnd <= tStart || clipStart >= tEnd) {
+                    // Entirely outside cut range
+                    newTimeline.push({ ...clip });
+                } else {
+                    // Left part before cut
+                    if (clipStart < tStart) {
+                        const durLeft = tStart - clipStart;
+                        if (durLeft > 0.001) {
+                            newTimeline.push({
+                                takeId: clip.takeId,
+                                srcStart: clip.srcStart,
+                                srcEnd: clip.srcStart + durLeft,
+                                duration: durLeft
+                            });
+                        }
+                    }
+                    // Right part after cut
+                    if (clipEnd > tEnd) {
+                        const durRight = clipEnd - tEnd;
+                        const offset = tEnd - clipStart;
+                        if (durRight > 0.001) {
+                            newTimeline.push({
+                                takeId: clip.takeId,
+                                srcStart: clip.srcStart + offset,
+                                srcEnd: clip.srcEnd,
+                                duration: durRight
+                            });
+                        }
+                    }
+                }
+                curTime = clipEnd;
+            }
+            return newTimeline;
+        }
+
+        function insertVideoTimeline(timeline, insertTime, clipsToInsert) {
+            if (!timeline || timeline.length === 0) {
+                return clipsToInsert ? clipsToInsert.map(c => ({...c})) : [];
+            }
+            if (!clipsToInsert || clipsToInsert.length === 0) return timeline;
+            
+            const newTimeline = [];
+            let curTime = 0.0;
+            let inserted = false;
+            
+            for (const clip of timeline) {
+                const clipStart = curTime;
+                const clipEnd = curTime + clip.duration;
+                
+                if (!inserted && insertTime <= clipStart) {
+                    for (const c of clipsToInsert) newTimeline.push({ ...c });
+                    inserted = true;
+                }
+                
+                if (!inserted && insertTime > clipStart && insertTime < clipEnd) {
+                    // Split clip in half
+                    const durLeft = insertTime - clipStart;
+                    if (durLeft > 0.001) {
+                        newTimeline.push({
+                            takeId: clip.takeId,
+                            srcStart: clip.srcStart,
+                            srcEnd: clip.srcStart + durLeft,
+                            duration: durLeft
+                        });
+                    }
+                    for (const c of clipsToInsert) newTimeline.push({ ...c });
+                    inserted = true;
+                    
+                    const durRight = clipEnd - insertTime;
+                    if (durRight > 0.001) {
+                        newTimeline.push({
+                            takeId: clip.takeId,
+                            srcStart: clip.srcStart + durLeft,
+                            srcEnd: clip.srcEnd,
+                            duration: durRight
+                        });
+                    }
+                } else {
+                    newTimeline.push({ ...clip });
+                }
+                
+                curTime = clipEnd;
+            }
+            
+            if (!inserted) {
+                for (const c of clipsToInsert) newTimeline.push({ ...c });
+            }
+            return newTimeline;
+        }
+
+        function spliceVideoTimeline(timeline, punchInStart, newTakeDur, takeId) {
+            if (!timeline || timeline.length === 0 || punchInStart === 0) {
+                return [{ takeId: takeId, srcStart: 0, srcEnd: newTakeDur, duration: newTakeDur }];
+            }
+            const punchInEnd = punchInStart + newTakeDur;
+            const remaining = cutVideoTimeline(timeline, punchInStart, punchInEnd);
+            const newClip = [{ takeId: takeId, srcStart: 0, srcEnd: newTakeDur, duration: newTakeDur }];
+            return insertVideoTimeline(remaining, punchInStart, newClip);
+        }
+
+        // ==========================================
+        // EDIT MODE: CUT, COPY & PASTE AUDIO & VIDEO CLIPBOARD
+        // ==========================================
 
         function copySelectedRange() {
             if (selectionStart === null || selectionEnd === null || selectionEnd <= selectionStart) return;
@@ -2550,7 +4196,17 @@
             if (sEnd <= sStart) return;
 
             audioClipboard = currentSamples.slice(sStart, sEnd);
+            const slide = slides[currentIndex];
             const dur = (sEnd - sStart) / sampleRate;
+            if (slide && slide.videoTimeline && slide.videoTimeline.length > 0) {
+                // Pad to the copied audio length: the camera timeline may end
+                // before the selection does, and a short clipboard would shift
+                // everything downstream when pasted.
+                videoClipboard = padTimelineToDuration(
+                    sliceVideoTimeline(slide.videoTimeline, selectionStart, selectionEnd) || [], dur);
+            } else {
+                videoClipboard = null;
+            }
             showSavedToast(`${t('toastCopied')} (${formatSecExact(dur)})`);
             updateControlUI();
         }
@@ -2565,14 +4221,31 @@
 
             if (sEnd <= sStart) return;
 
-            // Copy cut portion to clipboard for pasting elsewhere!
+            // Copy cut portion to audio & video clipboard
             audioClipboard = currentSamples.slice(sStart, sEnd);
+            const slide = slides[currentIndex];
 
             const before = currentSamples.slice(0, sStart);
             const after = currentSamples.slice(sEnd);
 
             // 5ms crossfade at the boundary to eliminate clicks
             const xfadeLen = Math.min(Math.floor(0.005 * sampleRate), before.length, after.length);
+
+            // The audio loses (sEnd - sStart) PLUS xfadeLen samples (the crossfade
+            // eats into `after`). The video timeline must lose exactly the same
+            // span, or audio and camera drift apart by 5ms on every cut.
+            if (slide && slide.videoTimeline && slide.videoTimeline.length > 0) {
+                const removedDur = ((sEnd - sStart) + xfadeLen) / sampleRate;
+                const cutEndForVideo = selectionStart + removedDur;
+                videoClipboard = padTimelineToDuration(
+                    sliceVideoTimeline(slide.videoTimeline, selectionStart, selectionEnd) || [],
+                    (sEnd - sStart) / sampleRate
+                );
+                slide.videoTimeline = cutVideoTimeline(slide.videoTimeline, selectionStart, cutEndForVideo);
+                await saveSlideTimeline(currentProjectId, slide.number, slide.videoTimeline, webcamState);
+            } else {
+                videoClipboard = null;
+            }
             for (let i = 0; i < xfadeLen; i++) {
                 const factor = i / xfadeLen;
                 const bIdx = before.length - xfadeLen + i;
@@ -2636,7 +4309,22 @@
 
             currentSamples = before.concat(inserted, after);
             totalDuration = currentSamples.length / sampleRate;
+            const insertTime = playheadPosition;
             playheadPosition = (sPos + inserted.length) / sampleRate;
+
+            // Splice the video timeline by exactly the pasted audio duration.
+            // If the clipboard carries camera clips, insert those; pad with a gap
+            // when they are shorter than the audio. If it carries none, insert a
+            // pure gap — otherwise every camera clip after the paste point shifts
+            // later and bleeds over un-filmed audio.
+            const slide = slides[currentIndex];
+            const pastedDur = inserted.length / sampleRate;
+            const hadTimeline = slide && slide.videoTimeline && slide.videoTimeline.length > 0;
+            if (slide && (hadTimeline || (videoClipboard && videoClipboard.length > 0))) {
+                const clipsToInsert = padTimelineToDuration(videoClipboard || [], pastedDur);
+                slide.videoTimeline = insertVideoTimeline(slide.videoTimeline || [], insertTime, clipsToInsert);
+                await saveSlideTimeline(currentProjectId, slide.number, slide.videoTimeline, webcamState);
+            }
 
             const wavBlob = encodeWAV(currentSamples, sampleRate);
             await saveSlideAudio(wavBlob, true);
@@ -2660,6 +4348,7 @@
             stopPlayback();
             clearSelection();
             audioClipboard = null;
+            videoClipboard = null;
 
             currentSamples = [];
             totalDuration = 0.0;
@@ -2669,15 +4358,17 @@
             slide.hasAudio = false;
             slide.audioDuration = 0;
             slide.audioBlob = null;
+            // Drop the in-memory camera state too: leaving it stale made the next
+            // recording inherit a timeline whose takes no longer exist.
+            slide.videoTimeline = [];
+            slide.hasVideo = false;
+            currentPlaybackVideoTakeId = null;
 
-            if (isServerMode) {
-                try {
-                    await fetch(`/api/delete_audio?project=${currentProjectId}&slide=${slide.number}`, { method: 'POST' });
-                } catch (e) {}
-            } else {
-                const tx = db.transaction(['audio'], 'readwrite');
-                tx.objectStore('audio').delete(`${currentProjectId}_${slide.number}`);
-            }
+            const tx = db.transaction(['audio'], 'readwrite');
+            tx.objectStore('audio').delete(`${currentProjectId}_${slide.number}`);
+            // Drop the camera takes and the stored timeline along with the audio.
+            await deleteCameraTakesForSlide(currentProjectId, slide.number);
+            await persistSlideRecord(slide);
 
             drawWaveform();
             renderSidebar();
@@ -2727,6 +4418,14 @@
             isPlaying = true;
             document.getElementById('btnPlayPause').textContent = '⏸';
 
+            // If slide has recorded footage, activate overlay & video playback loop
+            if (slideHasCamera(slides[currentIndex])) {
+                updateWebcamOverlayVisibility();
+                updateWebcamOverlayDOM();
+                initMediaPipeSegmentation();
+                requestAnimationFrame(processWebcamFrameLoop);
+            }
+
             playbackSource.onended = () => {
                 if (isPlaying) {
                     stopPlayback();
@@ -2760,6 +4459,18 @@
             isPlaying = false;
             clearInterval(playbackAnimFrame);
             document.getElementById('btnPlayPause').textContent = '▶';
+
+            isWebcamPlaybackActive = false;
+            currentPlaybackVideoTakeId = null;
+            currentPlaybackVideoSrc = null;
+            playbackVideoSeekable = false;
+            const playbackVid = document.getElementById('webcamPlaybackVideo');
+            if (playbackVid) {
+                playbackVid.pause();
+            }
+            // Playback is over: drop the recorded frame unless a live camera is
+            // running, so nothing stays frozen on the slide.
+            updateWebcamOverlayVisibility();
         }
 
         function skipAudio(seconds) {
@@ -2782,6 +4493,13 @@
             const timer = document.getElementById('timerDisplay');
             const btnDeleteAll = document.getElementById('btnDeleteAll');
             const btnPaste = document.getElementById('btnPaste');
+
+            // Delete / Clear Recording button visibility in dock-right
+            const curSlide = slides[currentIndex];
+            const hasSlideRec = currentSamples.length > 0 || (curSlide && (curSlide.hasAudio || slideHasCamera(curSlide)));
+            if (btnDeleteAll) {
+                btnDeleteAll.style.display = (hasSlideRec && recordingState !== 'recording') ? 'inline-flex' : 'none';
+            }
 
             // Check if Range Selection is active -> Switch to Edit Mode
             const isEditing = selectionStart !== null && selectionEnd !== null && selectionEnd > selectionStart;
@@ -2808,7 +4526,6 @@
                     txtRec.textContent = t('recordStop');
                     timer.textContent = formatSec(totalDuration);
                     timer.style.color = 'var(--danger)';
-                    btnDeleteAll.style.display = 'none';
                 } else {
                     btnRec.className = 'btn-ctl btn-rec-toggle';
                     recIcon.textContent = '●';
@@ -2819,16 +4536,15 @@
                         } else if (playheadPosition >= totalDuration - 0.05) {
                             txtRec.textContent = t('recordAppend');
                         } else {
-                            txtRec.textContent = `${t('recordFrom')} ${formatSecExact(playheadPosition)} (Espace)`;
+                            const spaceKey = currentLang === 'en' ? '(Space)' : '(Espace)';
+                            txtRec.textContent = `${t('recordFrom')} ${formatSecExact(playheadPosition)} ${spaceKey}`;
                         }
                         timer.textContent = formatSec(totalDuration);
                         timer.style.color = '#15803D';
-                        btnDeleteAll.style.display = 'flex';
                     } else {
                         txtRec.textContent = t('recordStart');
                         timer.textContent = "00:00";
                         timer.style.color = 'var(--brand-navy)';
-                        btnDeleteAll.style.display = 'none';
                     }
                 }
             }
@@ -2896,30 +4612,14 @@
             const text = document.getElementById('prompterScript').value;
             slide.script = text;
 
-            if (isServerMode) {
-                try {
-                    const res = await fetch(`/api/save_script?project=${currentProjectId}&slide=${slide.number}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ script: text })
-                    });
-                    const data = await res.json();
-                    if (data.success) {
-                        showSavedBadge();
-                    }
-                } catch (err) {
-                    console.error("Script save error:", err);
-                }
-            } else {
-                const tx = db.transaction(['slides'], 'readwrite');
-                const store = tx.objectStore('slides');
-                await store.put({
-                    key: `${currentProjectId}_${slide.number}`,
-                    projectId: currentProjectId,
-                    ...slide
-                });
-                showSavedBadge();
-            }
+            const tx = db.transaction(['slides'], 'readwrite');
+            const store = tx.objectStore('slides');
+            await store.put({
+                key: `${currentProjectId}_${slide.number}`,
+                projectId: currentProjectId,
+                ...slide
+            });
+            showSavedBadge();
         }
 
         function showSavedBadge() {
@@ -3017,99 +4717,70 @@
 
             const safeName = title.toLowerCase().replace(/[^a-z0-9]/g, '_');
 
-            if (isServerMode) {
-                // Native Server Mode: Poppler pdftoppm (instant & ultra fast)
-                spinner.style.display = 'block';
+            // Web Mode (GitHub Pages): In-Browser PDF.js with live progress bar & slide counter
+            spinner.style.display = 'none';
+            progressWrap.style.display = 'block';
+            progressBar.style.width = '0%';
+
+            const pdfCopyForPdfJs = new Uint8Array(pdfBytes.slice(0));
+
+            try {
+                const loadingTask = pdfjsLib.getDocument({ data: pdfCopyForPdfJs });
+                const pdfDoc = await loadingTask.promise;
+                const numPages = pdfDoc.numPages;
+
+                const extractedSlides = [];
+                for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+                    const pct = Math.round((pageNum / numPages) * 100);
+                    progressBar.style.width = `${pct}%`;
+                    msg.innerHTML = `<span style="font-size:1.15rem; font-weight:800; color:var(--brand-navy);">Diapositive ${pageNum} / ${numPages} (${pct}%)</span><br><span style="color:var(--text-muted); font-size:0.85rem;">Extraction haute résolution 1080p...</span>`;
+
+                    const page = await pdfDoc.getPage(pageNum);
+                    const viewport = page.getViewport({ scale: 2.0 });
+                    
+                    const renderCanvas = document.createElement('canvas');
+                    renderCanvas.width = viewport.width;
+                    renderCanvas.height = viewport.height;
+                    const renderCtx = renderCanvas.getContext('2d');
+                    
+                    await page.render({ canvasContext: renderCtx, viewport: viewport }).promise;
+                    const imgDataUrl = renderCanvas.toDataURL('image/png');
+                    
+                    extractedSlides.push({
+                        number: pageNum,
+                        topic: '',
+                        title: `Slide ${pageNum}`,
+                        targetTime: '1:00',
+                        script: '',
+                        image: imgDataUrl
+                    });
+                }
+
+                const newProj = {
+                    id: safeName,
+                    title: title,
+                    slideCount: numPages
+                };
+                const tx = db.transaction(['projects', 'slides'], 'readwrite');
+                tx.objectStore('projects').put(newProj);
+                extractedSlides.forEach(s => {
+                    tx.objectStore('slides').put({
+                        key: `${safeName}_${s.number}`,
+                        projectId: safeName,
+                        ...s
+                    });
+                });
+
+                currentProjectId = safeName;
+                await loadProjectsList();
+                await loadProject(currentProjectId);
+                closeModal();
+
+            } catch (err) {
                 progressWrap.style.display = 'none';
-                msg.innerHTML = `<span style="font-size:1.05rem; font-weight:700; color:var(--brand-navy);">Extraction rapide des diapositives 1080p...</span>`;
-
-                const pdfBlobToSend = new Blob([pdfBytes], { type: 'application/pdf' });
-                try {
-                    const res = await fetch(`/api/projects/new?name=${safeName}&title=${encodeURIComponent(title)}`, {
-                        method: 'POST',
-                        body: pdfBlobToSend
-                    });
-                    const data = await res.json();
-                    if (data.success) {
-                        currentProjectId = data.projectId;
-                        await loadProjectsList();
-                        await loadProject(currentProjectId);
-                        closeModal();
-                    } else {
-                        throw new Error(data.error || "Erreur d'import");
-                    }
-                } catch (err) {
-                    spinner.style.display = 'none';
-                    closeBtn.style.display = 'block';
-                    titleEl.textContent = t('modalErrorTitle');
-                    msg.textContent = err.message;
-                }
-            } else {
-                // Web Mode (GitHub Pages): In-Browser PDF.js with live progress bar & slide counter
-                spinner.style.display = 'none';
-                progressWrap.style.display = 'block';
-                progressBar.style.width = '0%';
-
-                const pdfCopyForPdfJs = new Uint8Array(pdfBytes.slice(0));
-
-                try {
-                    const loadingTask = pdfjsLib.getDocument({ data: pdfCopyForPdfJs });
-                    const pdfDoc = await loadingTask.promise;
-                    const numPages = pdfDoc.numPages;
-
-                    const extractedSlides = [];
-                    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-                        const pct = Math.round((pageNum / numPages) * 100);
-                        progressBar.style.width = `${pct}%`;
-                        msg.innerHTML = `<span style="font-size:1.15rem; font-weight:800; color:var(--brand-navy);">Diapositive ${pageNum} / ${numPages} (${pct}%)</span><br><span style="color:var(--text-muted); font-size:0.85rem;">Extraction haute résolution 1080p...</span>`;
-
-                        const page = await pdfDoc.getPage(pageNum);
-                        const viewport = page.getViewport({ scale: 2.0 });
-                        
-                        const renderCanvas = document.createElement('canvas');
-                        renderCanvas.width = viewport.width;
-                        renderCanvas.height = viewport.height;
-                        const renderCtx = renderCanvas.getContext('2d');
-                        
-                        await page.render({ canvasContext: renderCtx, viewport: viewport }).promise;
-                        const imgDataUrl = renderCanvas.toDataURL('image/png');
-                        
-                        extractedSlides.push({
-                            number: pageNum,
-                            topic: '',
-                            title: `Slide ${pageNum}`,
-                            targetTime: '1:00',
-                            script: '',
-                            image: imgDataUrl
-                        });
-                    }
-
-                    const newProj = {
-                        id: safeName,
-                        title: title,
-                        slideCount: numPages
-                    };
-                    const tx = db.transaction(['projects', 'slides'], 'readwrite');
-                    tx.objectStore('projects').put(newProj);
-                    extractedSlides.forEach(s => {
-                        tx.objectStore('slides').put({
-                            key: `${safeName}_${s.number}`,
-                            projectId: safeName,
-                            ...s
-                        });
-                    });
-
-                    currentProjectId = safeName;
-                    await loadProjectsList();
-                    await loadProject(currentProjectId);
-                    closeModal();
-
-                } catch (err) {
-                    progressWrap.style.display = 'none';
-                    closeBtn.style.display = 'block';
-                    titleEl.textContent = t('modalErrorTitle');
-                    msg.textContent = err.message;
-                }
+                closeBtn.style.display = 'block';
+                titleEl.textContent = t('modalErrorTitle');
+                msg.textContent = err.message;
             }
         }
 
@@ -3140,25 +4811,45 @@
             closeBtn.style.display = 'none';
             msg.textContent = t('modalGeneratingMsg');
 
-            if (isServerMode) {
+            if (webCodecsExportAvailable()) {
+                // Fast path: encode a real MP4 without replaying the presentation.
                 try {
-                    const res = await fetch(`/api/generate_video?project=${currentProjectId}`, { method: 'POST' });
-                    const data = await res.json();
+                    const fmtEta = secs => {
+                        if (!isFinite(secs) || secs < 0) return '';
+                        const m = Math.floor(secs / 60), s = Math.round(secs % 60);
+                        return m > 0 ? `${m} min ${s}s` : `${s}s`;
+                    };
+                    const blob = await exportVideoWebCodecs((done, total, etaSecs) => {
+                        const pct = Math.min(100, Math.round((done / total) * 100));
+                        progressBar.style.width = `${pct}%`;
+                        const eta = fmtEta(etaSecs);
+                        msg.innerHTML = `<span style="font-size:1.15rem; font-weight:800; color:var(--brand-navy);">${pct}%</span>`
+                            + `<br><span style="color:var(--text-muted); font-size:0.85rem;">`
+                            + `${done.toLocaleString()} / ${total.toLocaleString()} images`
+                            + (eta && pct < 100 ? ` · ${currentLang === 'fr' ? 'reste environ' : 'about'} ${eta}` : '')
+                            + `</span>`;
+                    });
+
+                    const videoUrl = URL.createObjectURL(blob);
+                    const mb = (blob.size / (1024 * 1024)).toFixed(1);
                     progressWrap.style.display = 'none';
                     closeBtn.style.display = 'block';
-
-                    if (data.success) {
-                        title.textContent = t('modalSuccessTitle');
-                        msg.innerHTML = t('modalSuccessMsg').replace('{url}', data.videoUrl);
-                    } else {
-                        title.textContent = t('modalErrorTitle');
-                        msg.textContent = data.message || "Error generating video.";
-                    }
+                    title.textContent = t('modalSuccessTitle');
+                    msg.innerHTML = `
+                        <div style="text-align:center; padding:15px 0;">
+                            <p style="font-size:1.05rem; color:var(--text-main); margin-bottom:6px;">${t('modalSuccessMsg')}</p>
+                            <p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:20px;">MP4 · ${mb} Mo</p>
+                            <a href="${videoUrl}" download="${currentProjectId}_presentation.mp4" class="btn-primary" style="display:inline-flex; align-items:center; gap:8px; padding:14px 28px; font-size:1.1rem; text-decoration:none; border-radius:8px; font-weight:700; background:linear-gradient(135deg, #0284C7, #0369A1); color:#fff; box-shadow:0 4px 14px rgba(2,132,199,0.35);">
+                                ${t('downloadVideoBtn')}
+                            </a>
+                        </div>
+                    `;
                 } catch (err) {
+                    console.error("WebCodecs export failed:", err);
                     progressWrap.style.display = 'none';
                     closeBtn.style.display = 'block';
                     title.textContent = t('modalErrorTitle');
-                    msg.textContent = err.message;
+                    msg.textContent = "Export MP4 : " + err.message;
                 }
             } else {
                 try {
@@ -3176,21 +4867,23 @@
                         ...audioDest.stream.getAudioTracks()
                     ]);
 
-                    const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') 
-                        ? 'video/webm;codecs=vp9,opus' 
-                        : (MediaRecorder.isTypeSupported('video/mp4') ? 'video/mp4' : 'video/webm');
+                    const mimeType = MediaRecorder.isTypeSupported('video/mp4') 
+                        ? 'video/mp4' 
+                        : (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') ? 'video/webm;codecs=vp9,opus' : 'video/webm');
 
-                    const recorder = new MediaRecorder(combinedStream, { mimeType });
+                    const recorder = new MediaRecorder(combinedStream, { 
+                        mimeType,
+                        videoBitsPerSecond: 8000000 
+                    });
                     const chunks = [];
                     recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
-
-                    recorder.start();
+                    recorder.start(100);
 
                     for (let i = 0; i < slides.length; i++) {
                         const s = slides[i];
                         const pct = Math.round(((i + 1) / slides.length) * 100);
                         progressBar.style.width = `${pct}%`;
-                        msg.innerHTML = `<span style="font-size:1.1rem; font-weight:800; color:var(--brand-navy);">Assemblage Diapositive ${s.number} / ${slides.length} (${pct}%)</span>`;
+                        msg.innerHTML = `<span style="font-size:1.1rem; font-weight:800; color:var(--brand-navy);">${t('slidesHeader') || 'Diapositive'} ${s.number} / ${slides.length} (${pct}%)</span>`;
                         
                         const img = new Image();
                         await new Promise((resolve) => {
@@ -3198,9 +4891,33 @@
                             img.src = s.image;
                         });
 
-                        vCtx.fillStyle = '#0F172A';
-                        vCtx.fillRect(0, 0, 1920, 1080);
-                        vCtx.drawImage(img, 0, 0, 1920, 1080);
+                        const drawSlide = () => {
+                            vCtx.fillStyle = '#0F172A';
+                            vCtx.fillRect(0, 0, 1920, 1080);
+                            vCtx.drawImage(img, 0, 0, 1920, 1080);
+                        };
+                        drawSlide();
+
+                        // Camera compositing. The slide used to be painted once and
+                        // the code then simply waited for the audio, so a recorded
+                        // camera never reached the exported file. Repaint every
+                        // frame instead, overlaying the take that the timeline puts
+                        // at the current instant — and nothing over its gaps, which
+                        // keeps the export identical to the preview.
+                        const camVid = await prepareExportCameraVideo(s);
+                        let camRaf = null;
+                        // The clock starts when the audio starts, not here:
+                        // decoding it takes time, and counting from before would
+                        // shift the camera ahead of the sound it belongs to.
+                        let startedAt = null;
+                        const paintLoop = () => {
+                            drawSlide();
+                            if (startedAt !== null) {
+                                drawExportCameraFrame(vCtx, s, camVid, (performance.now() - startedAt) / 1000);
+                            }
+                            camRaf = requestAnimationFrame(paintLoop);
+                        };
+                        if (camVid) camRaf = requestAnimationFrame(paintLoop);
 
                         if (s.hasAudio && s.audioBlob) {
                             const buffer = await audioContext.decodeAudioData(await s.audioBlob.arrayBuffer());
@@ -3208,11 +4925,19 @@
                             srcNode.buffer = buffer;
                             srcNode.connect(audioDest);
                             srcNode.start();
+                            startedAt = performance.now();
                             await new Promise(resolve => {
                                 srcNode.onended = resolve;
                             });
                         } else {
-                            await new Promise(r => setTimeout(r, 3000));
+                            startedAt = performance.now();
+                            await new Promise(r => setTimeout(r, 2000));
+                        }
+
+                        if (camRaf) cancelAnimationFrame(camRaf);
+                        if (camVid) {
+                            camVid.pause();
+                            camVid.remove();
                         }
                     }
 
@@ -3221,11 +4946,27 @@
 
                     const videoBlob = new Blob(chunks, { type: mimeType });
                     const videoUrl = URL.createObjectURL(videoBlob);
+                    // Name the file after what the browser actually encoded: asking
+                    // for mp4 is not a guarantee, MediaRecorder falls back to webm.
+                    const ext = mimeType.startsWith('video/mp4') ? 'mp4' : 'webm';
+                    // The button label names MP4; say WEBM when that is what came out.
+                    const dlLabel = t('downloadVideoBtn').replace(/MP4/i, ext.toUpperCase());
 
                     progressWrap.style.display = 'none';
                     closeBtn.style.display = 'block';
                     title.textContent = t('modalSuccessTitle');
-                    msg.innerHTML = t('modalSuccessMsg').replace('{url}', videoUrl);
+                    // Build the download link here rather than through modalSuccessMsg:
+                    // that string no longer carries a {url} placeholder, so the
+                    // generated video used to be produced and then silently dropped
+                    // with no way to save it.
+                    msg.innerHTML = `
+                        <div style="text-align:center; padding:15px 0;">
+                            <p style="font-size:1.05rem; color:var(--text-main); margin-bottom:20px;">${t('modalSuccessMsg')}</p>
+                            <a href="${videoUrl}" download="${currentProjectId}_presentation.${ext}" class="btn-primary" style="display:inline-flex; align-items:center; gap:8px; padding:14px 28px; font-size:1.1rem; text-decoration:none; border-radius:8px; font-weight:700; background:linear-gradient(135deg, #0284C7, #0369A1); color:#fff; box-shadow:0 4px 14px rgba(2,132,199,0.35);">
+                                ${dlLabel}
+                            </a>
+                        </div>
+                    `;
 
                 } catch (err) {
                     progressWrap.style.display = 'none';
@@ -3234,6 +4975,444 @@
                     msg.textContent = "Client Video Export Error: " + err.message;
                 }
             }
+        }
+
+        // ==========================================
+        // CAMERA COMPOSITING FOR THE BROWSER EXPORT
+        // Mirrors what render_project_video does with ffmpeg: the take is cropped
+        // to a square, placed from the slide layout, and circle-masked when the
+        // shape asks for it. Background removal is deliberately left out, exactly
+        // as on the server, so both exports look the same.
+        // ==========================================
+        async function prepareExportCameraVideo(slide) {
+            if (!slideHasCamera(slide)) return null;
+            await preloadSlideTakes(slide);
+            const firstId = (slide.videoTimeline || []).map(c => c.takeId).find(Boolean);
+            if (!firstId || !takeSrcFor(slide.number, firstId)) return null;
+
+            const vid = document.createElement('video');
+            vid.muted = true;
+            vid.playsInline = true;
+            // Off screen rather than display:none, which can stop decode.
+            vid.style.cssText = 'position:fixed; left:-10000px; top:0; width:160px;'
+                              + ' height:120px; opacity:0; pointer-events:none; z-index:-1;';
+            document.body.appendChild(vid);
+            vid.dataset.takeId = '';
+            return vid;
+        }
+
+        function drawExportCameraFrame(ctx, slide, camVid, t) {
+            if (!camVid) return;
+            const clip = getVideoClipAtTime(slide.videoTimeline || [], t);
+            if (!clip || !clip.takeId) return;          // gap: bare slide, like the server
+
+            const src = takeSrcFor(slide.number, clip.takeId);
+            if (!src) return;
+            if (camVid.dataset.takeId !== clip.takeId) {
+                camVid.dataset.takeId = clip.takeId;
+                camVid.src = src;
+                camVid.currentTime = clip.srcTime;
+                camVid.play().catch(() => {});
+            } else if (Math.abs(camVid.currentTime - clip.srcTime) > 0.25) {
+                camVid.currentTime = clip.srcTime;
+            }
+            if (camVid.readyState < 2) return;
+
+            drawCameraOnto(ctx, slide.webcamLayout || webcamState, camVid);
+        }
+
+        // Paint one camera frame onto a 1920x1080 context, positioned and masked
+        // from the slide layout. Same geometry as the server: square centre crop
+        // (ffmpeg's force_original_aspect_ratio=increase + crop) and a circular
+        // mask only when the shape asks for one.
+        function drawCameraOnto(ctx, layout, source) {
+            if (!source) return;
+            const size = Math.max(120, Math.min(1920, Math.round((layout.sizePct || 0.28) * 1920)));
+            const x = Math.max(0, Math.min(1920 - size, Math.round((layout.xPct || 0.70) * 1920)));
+            const y = Math.max(0, Math.min(1080 - size, Math.round((layout.yPct || 0.65) * 1080)));
+
+            const rawW = source.videoWidth || source.width || 640;
+            const rawH = source.videoHeight || source.height || 480;
+            const side = Math.min(rawW, rawH);
+            const sx = (rawW - side) / 2;
+            const sy = (rawH - side) / 2;
+
+            ctx.save();
+            if ((layout.shape || 'cutout') === 'circle') {
+                ctx.beginPath();
+                ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2);
+                ctx.clip();
+            }
+            ctx.drawImage(source, sx, sy, side, side, x, y, size, size);
+            ctx.restore();
+        }
+
+        // ==========================================
+        // WEBCODECS EXPORT — real MP4, encoded as fast as the machine allows
+        //
+        // The MediaRecorder path below replays the whole presentation to film it,
+        // so exporting a 30 minute talk takes 30 minutes and yields WebM. Here the
+        // frames are encoded directly and the audio is encoded from its samples
+        // without ever being played, which removes the real-time floor entirely.
+        // Slides with no camera cost almost nothing; only camera stretches need
+        // their source decoded, and that runs at several times normal speed.
+        // ==========================================
+        const EXPORT_W = 1920, EXPORT_H = 1080;
+        const EXPORT_FPS_CAMERA = 30;   // smooth for a moving face
+        const EXPORT_FPS_STATIC = 6;    // a motionless slide needs no more
+
+        function webCodecsExportAvailable() {
+            return typeof VideoEncoder !== 'undefined'
+                && typeof AudioEncoder !== 'undefined'
+                && typeof VideoFrame !== 'undefined'
+                && typeof AudioData !== 'undefined'
+                && typeof window.Mp4Muxer !== 'undefined';
+        }
+
+        async function pickH264Codec() {
+            // From most to least capable; 1080p needs level 4.0.
+            const candidates = ['avc1.640028', 'avc1.4d0028', 'avc1.42002a', 'avc1.42001f'];
+            for (const codec of candidates) {
+                try {
+                    const res = await VideoEncoder.isConfigSupported({
+                        codec, width: EXPORT_W, height: EXPORT_H,
+                        bitrate: 8_000_000, framerate: EXPORT_FPS_CAMERA
+                    });
+                    if (res && res.supported) return codec;
+                } catch (e) { /* try the next one */ }
+            }
+            return null;
+        }
+
+        // AAC encoding is absent from several Chromium builds (Linux especially).
+        // Ask before configuring: configure() accepts the codec there and only
+        // fails later, mid-export, with "Unsupported codec type". Opus in MP4 is
+        // the fallback — valid, and played by Chrome, VLC and ffmpeg, though some
+        // older players expect AAC.
+        async function pickAudioCodec(sampleRate) {
+            const candidates = [
+                { webCodec: 'mp4a.40.2', muxerCodec: 'aac', bitrate: 192_000, label: 'AAC' },
+                { webCodec: 'opus', muxerCodec: 'opus', bitrate: 128_000, label: 'Opus' }
+            ];
+            for (const c of candidates) {
+                try {
+                    const res = await AudioEncoder.isConfigSupported({
+                        codec: c.webCodec, sampleRate, numberOfChannels: 1, bitrate: c.bitrate
+                    });
+                    if (res && res.supported) return c;
+                } catch (e) { /* try the next one */ }
+            }
+            return null;
+        }
+
+        // Wait for the next decoded frame of a playing video.
+        function nextVideoFrame(vid) {
+            return new Promise(resolve => {
+                if (vid.requestVideoFrameCallback) vid.requestVideoFrameCallback(() => resolve());
+                else setTimeout(resolve, 1000 / EXPORT_FPS_CAMERA);
+            });
+        }
+
+        // MediaRecorder writes WebM with no duration in the header, so the element
+        // reports duration = Infinity and setting currentTime does nothing useful:
+        // the take stops advancing and stays frozen on one frame. Seeking far past
+        // the end once makes the browser scan the file and settle on the real
+        // duration, after which seeking behaves. The server repairs its takes with
+        // ffmpeg on upload; in the browser this is the only lever available.
+        function makeVideoSeekable(el) {
+            if (isFinite(el.duration) && el.duration > 0) return Promise.resolve();
+            return new Promise(resolve => {
+                let settled = false;
+                const finish = () => {
+                    if (settled) return;
+                    settled = true;
+                    el.removeEventListener('durationchange', onDuration);
+                    const back = () => { el.removeEventListener('seeked', back); resolve(); };
+                    el.addEventListener('seeked', back);
+                    try { el.currentTime = 0; } catch (e) { resolve(); }
+                    setTimeout(() => { el.removeEventListener('seeked', back); resolve(); }, 3000);
+                };
+                const onDuration = () => { if (isFinite(el.duration)) finish(); };
+                el.addEventListener('durationchange', onDuration);
+                try { el.currentTime = 1e6; } catch (e) { finish(); }
+                setTimeout(finish, 3000);
+            });
+        }
+
+        function seekVideo(vid, time) {
+            return new Promise(resolve => {
+                const done = () => { vid.removeEventListener('seeked', done); resolve(); };
+                vid.addEventListener('seeked', done);
+                vid.currentTime = time;
+                setTimeout(done, 2000);   // never hang the export on a stubborn seek
+            });
+        }
+
+        async function loadTakeVideo(slideNum, takeId) {
+            const src = takeSrcFor(slideNum, takeId);
+            if (!src) return null;
+            const vid = document.createElement('video');
+            vid.muted = true;
+            vid.playsInline = true;
+            vid.preload = 'auto';
+            vid.src = src;
+            // Park it off screen rather than hiding it: the element must stay in
+            // the document to keep decoding frames for the canvas, but appending
+            // it as-is showed the camera full size behind the export dialog.
+            // display:none would risk the browser suspending decode entirely.
+            vid.style.cssText = 'position:fixed; left:-10000px; top:0; width:160px;'
+                              + ' height:120px; opacity:0; pointer-events:none; z-index:-1;';
+            document.body.appendChild(vid);
+            const ok = await new Promise(resolve => {
+                let settled = false;
+                const finish = v => { if (!settled) { settled = true; resolve(v); } };
+                vid.onloadeddata = () => finish(true);
+                vid.onerror = () => finish(false);
+                setTimeout(() => finish(vid.readyState >= 2), 8000);
+            });
+            if (!ok) { vid.remove(); return null; }
+            // Settle the real duration before any seeking (see makeVideoSeekable).
+            await makeVideoSeekable(vid);
+            return vid;
+        }
+
+        async function exportVideoWebCodecs(report) {
+            const codec = await pickH264Codec();
+            if (!codec) throw new Error("H.264 encoding is not available in this browser");
+
+            // Decode every slide's audio first: it gives the exact durations the
+            // video timeline must match, and the total frame count for progress.
+            ensureAudioContext();
+            const plan = [];
+            for (const s of slides) {
+                let buffer = null;
+                if (s.hasAudio && s.audioBlob) {
+                    buffer = await audioContext.decodeAudioData(await s.audioBlob.arrayBuffer());
+                }
+                const duration = buffer ? buffer.duration : 2.0;
+                plan.push({ slide: s, buffer, duration });
+            }
+
+            // Count frames the same way they will be emitted — camera stretches at
+            // the full rate, motionless ones at the low rate — otherwise the
+            // progress bar drifts from what is really happening.
+            let totalFrames = 0;
+            for (const p of plan) {
+                const tl = slideHasCamera(p.slide) && Array.isArray(p.slide.videoTimeline)
+                    ? p.slide.videoTimeline : null;
+                if (!tl || !tl.length) {
+                    totalFrames += Math.max(1, Math.ceil(p.duration * EXPORT_FPS_STATIC));
+                    continue;
+                }
+                let cursor = 0;
+                for (const clip of tl) {
+                    const span = Math.max(0, Math.min(p.duration - cursor, clip.duration || 0));
+                    cursor += clip.duration || 0;
+                    if (span <= 0) continue;
+                    totalFrames += Math.ceil(span * (clip.takeId ? EXPORT_FPS_CAMERA : EXPORT_FPS_STATIC));
+                }
+                if (cursor < p.duration) {
+                    totalFrames += Math.ceil((p.duration - cursor) * EXPORT_FPS_STATIC);
+                }
+            }
+
+            const sampleRate = (plan.find(p => p.buffer) || {}).buffer?.sampleRate || 48000;
+            const audioCodec = await pickAudioCodec(sampleRate);
+            if (!audioCodec) throw new Error("No audio encoder available in this browser");
+            const muxer = new Mp4Muxer.Muxer({
+                target: new Mp4Muxer.ArrayBufferTarget(),
+                video: { codec: 'avc', width: EXPORT_W, height: EXPORT_H },
+                audio: { codec: audioCodec.muxerCodec, sampleRate, numberOfChannels: 1 },
+                fastStart: 'in-memory'      // seekable file, playable everywhere
+            });
+
+            let encodeError = null;
+            const videoEncoder = new VideoEncoder({
+                output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+                error: e => { encodeError = e; }
+            });
+            videoEncoder.configure({
+                codec, width: EXPORT_W, height: EXPORT_H,
+                bitrate: 8_000_000, framerate: EXPORT_FPS_CAMERA
+            });
+            const audioEncoder = new AudioEncoder({
+                output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
+                error: e => { encodeError = e; }
+            });
+            audioEncoder.configure({
+                codec: audioCodec.webCodec, sampleRate, numberOfChannels: 1, bitrate: audioCodec.bitrate
+            });
+
+            const canvas = document.createElement('canvas');
+            canvas.width = EXPORT_W; canvas.height = EXPORT_H;
+            const ctx = canvas.getContext('2d', { alpha: false });
+
+            let framesDone = 0;
+            let timeCursor = 0;          // seconds, start of the current slide
+            const startedAt = performance.now();
+
+            for (const { slide, buffer, duration } of plan) {
+                // --- audio: encoded from the samples, never played ---
+                if (buffer) {
+                    const data = buffer.getChannelData(0);
+                    const CHUNK = 4096;
+                    for (let off = 0; off < data.length; off += CHUNK) {
+                        const len = Math.min(CHUNK, data.length - off);
+                        audioEncoder.encode(new AudioData({
+                            format: 'f32-planar',
+                            sampleRate,
+                            numberOfFrames: len,
+                            numberOfChannels: 1,
+                            timestamp: Math.round((timeCursor + off / sampleRate) * 1e6),
+                            data: data.slice(off, off + len)
+                        }));
+                    }
+                }
+
+                // --- video ---
+                const img = await new Promise((resolve, reject) => {
+                    const im = new Image();
+                    im.onload = () => resolve(im);
+                    im.onerror = reject;
+                    im.src = slide.image;
+                });
+                const drawSlide = () => {
+                    ctx.fillStyle = '#0F172A';
+                    ctx.fillRect(0, 0, EXPORT_W, EXPORT_H);
+                    ctx.drawImage(img, 0, 0, EXPORT_W, EXPORT_H);
+                };
+
+                const hasCam = slideHasCamera(slide);
+                const layout = slide.webcamLayout || webcamState;
+
+                const takeVideos = {};
+                if (hasCam) {
+                    for (const id of [...new Set((slide.videoTimeline || []).map(c => c.takeId).filter(Boolean))]) {
+                        takeVideos[id] = await loadTakeVideo(slide.number, id);
+                    }
+                }
+
+                // Keep the encoder queue short. Frames are produced faster than
+                // 1080p encoding consumes them, and an unbounded queue grows until
+                // the tab dies, so wait for it to drain rather than pressing on.
+                const awaitEncoderRoom = async () => {
+                    let guard = 0;
+                    while (videoEncoder.encodeQueueSize > 8 && guard++ < 2000) {
+                        await new Promise(r => setTimeout(r, 4));
+                    }
+                };
+
+                let keyCounter = 0;
+                const emit = async (tLocal, fps) => {
+                    await awaitEncoderRoom();
+                    const frame = new VideoFrame(canvas, {
+                        timestamp: Math.round((timeCursor + tLocal) * 1e6),
+                        duration: Math.round(1e6 / fps)
+                    });
+                    videoEncoder.encode(frame, { keyFrame: keyCounter % 60 === 0 });
+                    frame.close();
+                    keyCounter++;
+                    framesDone++;
+                    if (framesDone % 10 === 0) {
+                        const elapsed = (performance.now() - startedAt) / 1000;
+                        const rate = framesDone / Math.max(elapsed, 0.001);
+                        report(framesDone, totalFrames, (totalFrames - framesDone) / Math.max(rate, 0.001));
+                    }
+                    if (encodeError) throw encodeError;
+                };
+
+                // Walk the slide clip by clip rather than output frame by output
+                // frame. A camera clip is consumed by following the frames the
+                // video actually decodes while it plays fast, and emitting the
+                // output frames each decoded frame covers. Driving it the other
+                // way round — asking for one source position per output frame —
+                // made playback run ahead of consumption and re-seek constantly,
+                // which stalled the export a few percent in.
+                const clips = hasCam && Array.isArray(slide.videoTimeline) && slide.videoTimeline.length
+                    ? slide.videoTimeline
+                    : [{ takeId: null, srcStart: 0, srcEnd: duration, duration: duration }];
+
+                let outCursor = 0;
+                for (const clip of clips) {
+                    const clipDur = Math.max(0, clip.duration || 0);
+                    const outStart = outCursor;
+                    const outEnd = Math.min(duration, outCursor + clipDur);
+                    outCursor += clipDur;
+                    if (outEnd <= outStart) continue;
+
+                    const vid = clip.takeId ? takeVideos[clip.takeId] : null;
+
+                    if (!vid) {
+                        // No camera here: a motionless slide needs few frames.
+                        const step = 1 / EXPORT_FPS_STATIC;
+                        drawSlide();
+                        for (let t = outStart; t < outEnd - 1e-6; t += step) {
+                            await emit(t, EXPORT_FPS_STATIC);
+                        }
+                        continue;
+                    }
+
+                    const fps = EXPORT_FPS_CAMERA;
+                    const step = 1 / fps;
+                    let nextOut = outStart;
+
+                    // Step the take deterministically, one seek per output frame,
+                    // with the video paused. Letting it play fast instead made it
+                    // race ahead of the encoder — the loop is throttled by encoder
+                    // backpressure, playback is not — so many output frames were
+                    // drawn from the same decoded frame (the camera appeared to
+                    // freeze) and the take hit its end long before the slide did,
+                    // dropping the camera for the rest of it. A seek inside a
+                    // fully buffered take costs about a millisecond.
+                    vid.pause();
+                    const srcLimit = isFinite(vid.duration) ? vid.duration : Infinity;
+
+                    while (nextOut < outEnd - 1e-6) {
+                        const srcT = (clip.srcStart || 0) + (nextOut - outStart);
+                        drawSlide();
+                        if (srcT < srcLimit - 1e-3) {
+                            await seekVideo(vid, srcT);
+                            if (vid.readyState >= 2) drawCameraOnto(ctx, layout, vid);
+                        }
+                        // Past the end of the take: bare slide, as the server does.
+                        await emit(nextOut, fps);
+                        nextOut += step;
+                    }
+
+                    // The take ran out before the audio did: finish on the bare
+                    // slide, which is what the preview and the server both show.
+                    if (nextOut < outEnd - 1e-6) {
+                        drawSlide();
+                        for (let t = nextOut; t < outEnd - 1e-6; t += step) {
+                            await emit(t, fps);
+                        }
+                    }
+                }
+
+                // The camera timeline can be shorter than the slide's audio — a
+                // stretch recorded with the camera off, for instance. Cover the
+                // remainder with the bare slide so the video keeps pace with the
+                // sound instead of ending early and freezing.
+                if (outCursor < duration - 1e-6) {
+                    const step = 1 / EXPORT_FPS_STATIC;
+                    drawSlide();
+                    for (let t = Math.max(0, outCursor); t < duration - 1e-6; t += step) {
+                        await emit(t, EXPORT_FPS_STATIC);
+                    }
+                }
+
+                Object.values(takeVideos).forEach(v => { if (v) { v.pause(); v.remove(); } });
+                timeCursor += duration;
+            }
+
+            report(totalFrames, totalFrames, 0);
+            await videoEncoder.flush();
+            await audioEncoder.flush();
+            muxer.finalize();
+            if (encodeError) throw encodeError;
+            const out = new Blob([muxer.target.buffer], { type: 'video/mp4' });
+            out.audioCodecLabel = audioCodec.label;
+            return out;
         }
 
         // ==========================================
@@ -3257,16 +5436,8 @@
 
             const recFolder = projFolder.folder("recordings");
             for (let s of slides) {
-                if (s.hasAudio) {
-                    if (isServerMode) {
-                        try {
-                            const res = await fetch(s.audioUrl);
-                            const blob = await res.blob();
-                            recFolder.file(`slide_${s.number.toString().padStart(2, '0')}.wav`, blob);
-                        } catch(e){}
-                    } else if (s.audioBlob) {
-                        recFolder.file(`slide_${s.number.toString().padStart(2, '0')}.wav`, s.audioBlob);
-                    }
+                if (s.hasAudio && s.audioBlob) {
+                    recFolder.file(`slide_${s.number.toString().padStart(2, '0')}.wav`, s.audioBlob);
                 }
             }
 
@@ -3350,7 +5521,23 @@
             }
         });
 
-        init();
+        // Show the unsupported-device notice before init() does any awaiting, so a
+        // phone user sees the explanation immediately rather than a blank page.
+        refreshUnsupportedGate();
+
+        // Never leave the page invisible: body only fades in on .ready, so if
+        // init() throws (blocked media permissions, unavailable IndexedDB) the
+        // user must still get a usable page rather than a white screen.
+        // Safety net: init() awaits device enumeration, which can stay pending
+        // indefinitely if the user neither accepts nor refuses the permission
+        // prompt. Reveal the page anyway rather than hold a blank screen.
+        const revealTimer = setTimeout(() => document.body.classList.add('ready'), 4000);
+        init().catch(err => {
+            console.error("Initialisation error:", err);
+        }).finally(() => {
+            clearTimeout(revealTimer);
+            document.body.classList.add('ready');
+        });
     </script>
 </body>
 </html>
