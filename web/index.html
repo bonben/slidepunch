@@ -1623,7 +1623,12 @@
 
                 <!-- Hidden video elements for feed & playback -->
                 <video id="webcamVideo" playsinline autoplay muted style="display:none;"></video>
-                <video id="webcamPlaybackVideo" playsinline muted style="display:none;"></video>
+                <!-- Parked off screen rather than display:none: a hidden video has
+                     its decoding suspended by the browser after a few seconds, which
+                     froze the recorded camera mid-playback. It must stay laid out to
+                     keep feeding frames to the canvas. -->
+                <video id="webcamPlaybackVideo" playsinline muted
+                       style="position:fixed; left:-10000px; top:0; width:160px; height:120px; opacity:0; pointer-events:none; z-index:-1;"></video>
             </div>
             <div class="preview-nav">
                 <button class="nav-btn" id="btnPrevSlide" onclick="prevSlide()">◀ Previous (←)</button>
@@ -3063,6 +3068,7 @@
             // filmed clip): no camera here — let the base slide show.
             return null;
         }
+
 
         function renderWebcamPlaybackFrame(targetTime) {
             const slide = slides[currentIndex];
@@ -5580,26 +5586,28 @@
                     const step = 1 / fps;
                     let nextOut = outStart;
 
-                    vid.playbackRate = 8;
-                    await seekVideo(vid, clip.srcStart || 0);
-                    try { await vid.play(); } catch (e) { /* decoded frames still arrive */ }
-
-                    let guard = 0;
-                    while (nextOut < outEnd - 1e-6 && guard++ < 20000) {
-                        await nextVideoFrame(vid);
-                        const media = vid.currentTime;
-                        let emitted = 0;
-                        while (nextOut < outEnd - 1e-6
-                               && (clip.srcStart || 0) + (nextOut - outStart) <= media
-                               && emitted++ < 400) {
-                            drawSlide();
-                            drawCameraOnto(ctx, layout, vid);
-                            await emit(nextOut, fps);
-                            nextOut += step;
-                        }
-                        if (vid.ended) break;
-                    }
+                    // Step the take deterministically, one seek per output frame,
+                    // with the video paused. Letting it play fast instead made it
+                    // race ahead of the encoder — the loop is throttled by encoder
+                    // backpressure, playback is not — so many output frames were
+                    // drawn from the same decoded frame (the camera appeared to
+                    // freeze) and the take hit its end long before the slide did,
+                    // dropping the camera for the rest of it. A seek inside a
+                    // fully buffered take costs about a millisecond.
                     vid.pause();
+                    const srcLimit = isFinite(vid.duration) ? vid.duration : Infinity;
+
+                    while (nextOut < outEnd - 1e-6) {
+                        const srcT = (clip.srcStart || 0) + (nextOut - outStart);
+                        drawSlide();
+                        if (srcT < srcLimit - 1e-3) {
+                            await seekVideo(vid, srcT);
+                            if (vid.readyState >= 2) drawCameraOnto(ctx, layout, vid);
+                        }
+                        // Past the end of the take: bare slide, as the server does.
+                        await emit(nextOut, fps);
+                        nextOut += step;
+                    }
 
                     // The take ran out before the audio did: finish on the bare
                     // slide, which is what the preview and the server both show.
