@@ -7,4 +7,7 @@ temp_*.dat
 *.mp4
 demo_*.pdf
 *.pdf
-!projects/*/slides.pdf
+
+# Anciennes données du mode serveur : les projets vivent maintenant dans
+# IndexedDB, côté navigateur. Ce dossier n'est plus lu par l'application.
+projects/

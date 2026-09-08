@@ -1814,7 +1814,6 @@
         // ==========================================
         const i18n = {
             en: {
-                serverModeBadge: "⚡ Local Server",
                 webModeBadge: "🌐 In-Browser (Private)",
                 projectLabel: "Project:",
                 newProjectBtn: "+ New",
@@ -1901,7 +1900,6 @@
                 confirmPendingGen: "There are {count} slide(s) without audio.\nDo you want to generate the video anyway?"
             },
             fr: {
-                serverModeBadge: "⚡ Serveur Local",
                 webModeBadge: "🌐 Navigateur (Privé)",
                 projectLabel: "Projet :",
                 newProjectBtn: "+ Nouveau",
@@ -1993,7 +1991,6 @@
         // APPLICATION STATE
         // ==========================================
         let currentLang = localStorage.getItem('slidepunch_lang') || 'fr';
-        let isServerMode = false;
         let db = null;
         let currentProjectId = null;
         let projects = [];
@@ -2193,17 +2190,12 @@
         function updateModeBadge() {
             const badge = document.getElementById('appModeBadge');
             if (!badge) return;
-            if (isServerMode) {
-                badge.className = "mode-badge";
-                badge.textContent = t('serverModeBadge');
-            } else {
-                badge.className = "mode-badge web-mode";
-                badge.textContent = t('webModeBadge');
-            }
+            badge.className = "mode-badge web-mode";
+            badge.textContent = t('webModeBadge');
         }
 
         // ==========================================
-        // HYBRID STORAGE ENGINE (IndexedDB / Server)
+        // STORAGE — IndexedDB, entirely in the browser
         // ==========================================
 
         function openIndexedDB() {
@@ -2234,20 +2226,6 @@
             });
         }
 
-        async function detectBackend() {
-            try {
-                const res = await fetch('/api/projects', { method: 'GET' });
-                if (res.ok) {
-                    isServerMode = true;
-                } else {
-                    isServerMode = false;
-                }
-            } catch (e) {
-                isServerMode = false;
-            }
-            updateModeBadge();
-        }
-
         const canvas = document.getElementById('waveformCanvas');
         const canvasCtx = canvas.getContext('2d');
 
@@ -2262,21 +2240,19 @@
             // Instant translation before rendering
             applyLanguage();
 
-            await detectBackend();
-            if (!isServerMode) {
-                await openIndexedDB();
-                try {
-                    const tx = db.transaction(['projects', 'slides', 'audio'], 'readwrite');
-                    tx.objectStore('projects').delete('hdr_demo');
-                    const sStore = tx.objectStore('slides');
-                    const req = sStore.getAll();
-                    req.onsuccess = () => {
-                        (req.result || []).forEach(s => {
-                            if (s.projectId === 'hdr_demo') sStore.delete(s.key);
-                        });
-                    };
-                } catch (e) {}
-            }
+            updateModeBadge();
+            await openIndexedDB();
+            try {
+                const tx = db.transaction(['projects', 'slides', 'audio'], 'readwrite');
+                tx.objectStore('projects').delete('hdr_demo');
+                const sStore = tx.objectStore('slides');
+                const req = sStore.getAll();
+                req.onsuccess = () => {
+                    (req.result || []).forEach(s => {
+                        if (s.projectId === 'hdr_demo') sStore.delete(s.key);
+                    });
+                };
+            } catch (e) {}
 
             await populateMicrophoneList();
             if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
@@ -2400,19 +2376,10 @@
             const sel = document.getElementById('projectSelect');
             sel.innerHTML = '';
 
-            if (isServerMode) {
-                try {
-                    const res = await fetch('/api/projects');
-                    projects = await res.json();
-                } catch (err) {
-                    console.error("Server projects error:", err);
-                }
-            } else {
-                const tx = db.transaction(['projects'], 'readonly');
-                const store = tx.objectStore('projects');
-                const req = store.getAll();
-                projects = await new Promise(r => { req.onsuccess = () => r(req.result || []); });
-            }
+            const tx = db.transaction(['projects'], 'readonly');
+            const store = tx.objectStore('projects');
+            const req = store.getAll();
+            projects = await new Promise(r => { req.onsuccess = () => r(req.result || []); });
 
             if (!currentProjectId && projects.length > 0) {
                 currentProjectId = projects[0].id;
@@ -2439,14 +2406,7 @@
 
         async function loadProject(projId) {
             currentProjectId = projId;
-            if (isServerMode) {
-                try {
-                    const res = await fetch(`/api/slides?project=${projId}`);
-                    slides = await res.json();
-                } catch (err) {
-                    console.error("Server slides error:", err);
-                }
-            } else {
+            {
                 const tx = db.transaction(['slides', 'audio'], 'readonly');
                 const sStore = tx.objectStore('slides');
                 const aStore = tx.objectStore('audio');
@@ -2537,11 +2497,7 @@
             currentIndex = index;
             const slide = slides[currentIndex];
 
-            if (isServerMode) {
-                document.getElementById('currentSlideImg').src = slide.image + '&t=' + new Date().getTime();
-            } else {
-                document.getElementById('currentSlideImg').src = slide.image;
-            }
+            document.getElementById('currentSlideImg').src = slide.image;
 
             const topicStr = (slide.topic || '').trim();
             const isGeneric = !topicStr || topicStr.toLowerCase() === `slide ${slide.number}` || topicStr.toLowerCase() === 'slide';
@@ -2577,13 +2533,7 @@
             if (slide && slide.hasAudio) {
                 try {
                     ensureAudioContext();
-                    let arrayBuffer;
-                    if (isServerMode) {
-                        const response = await fetch(slide.audioUrl + '&t=' + new Date().getTime());
-                        arrayBuffer = await response.arrayBuffer();
-                    } else if (slide.audioBlob) {
-                        arrayBuffer = await slide.audioBlob.arrayBuffer();
-                    }
+                    const arrayBuffer = slide.audioBlob ? await slide.audioBlob.arrayBuffer() : null;
 
                     if (arrayBuffer) {
                         const decoded = await audioContext.decodeAudioData(arrayBuffer);
@@ -3089,9 +3039,9 @@
             // than leaving the previous take's last frame on screen.
             if (!expectedSrc) return false;
 
-            // Compare against the src we last assigned, not playbackVid.src: the
-            // element reports an absolute URL, which never equals a relative
-            // /api/... path, and the source would be reassigned every frame.
+            // Compare against the src we last assigned rather than playbackVid.src,
+            // which the element normalises — the source would otherwise be
+            // reassigned on every frame.
             if (currentPlaybackVideoTakeId !== clipInfo.takeId || currentPlaybackVideoSrc !== expectedSrc) {
                 currentPlaybackVideoTakeId = clipInfo.takeId;
                 currentPlaybackVideoSrc = expectedSrc;
@@ -3401,16 +3351,6 @@
             if (!currentProjectId) return;
             try {
                 localStorage.setItem(`slidepunch_webcam_layout_${currentProjectId}`, JSON.stringify(webcamState));
-                if (isServerMode) {
-                    clearTimeout(saveLayoutTimeout);
-                    saveLayoutTimeout = setTimeout(() => {
-                        fetch(`/api/save_project_layout?project=${currentProjectId}`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(webcamState)
-                        }).catch(() => {});
-                    }, 350);
-                }
             } catch(e) {}
         }
 
@@ -3422,16 +3362,6 @@
                 if (saved) {
                     const parsed = JSON.parse(saved);
                     Object.assign(webcamState, parsed);
-                }
-                if (isServerMode) {
-                    const res = await fetch(`/api/project_layout?project=${id}`);
-                    if (res.ok) {
-                        const srvLayout = await res.json();
-                        if (srvLayout && typeof srvLayout.xPct === 'number') {
-                            Object.assign(webcamState, srvLayout);
-                            localStorage.setItem(`slidepunch_webcam_layout_${id}`, JSON.stringify(webcamState));
-                        }
-                    }
                 }
             } catch(e) {}
         }
@@ -3457,9 +3387,8 @@
         // floating over the slide with no picture behind them.
         // ==========================================
         // CAMERA TAKE STORAGE
-        // Server mode streams takes from /api/slide_video. Browser mode has no
-        // server, so takes live in IndexedDB and are handed to the <video> element
-        // as blob URLs. Everything above this layer works the same either way.
+        // Takes live in IndexedDB and are handed to the <video> element as blob
+        // URLs. Everything above this layer only ever sees takeSrcFor().
         // ==========================================
         const takeObjectUrls = {};   // key -> blob URL, cached for the session
 
@@ -3497,21 +3426,16 @@
 
         // Resolve every take a slide references, so playback can stay synchronous.
         async function preloadSlideTakes(slide) {
-            if (isServerMode || !slide || !Array.isArray(slide.videoTimeline)) return;
+            if (!slide || !Array.isArray(slide.videoTimeline)) return;
             const ids = [...new Set(slide.videoTimeline.map(c => c.takeId).filter(Boolean))];
             for (const id of ids) {
                 await loadCameraTakeUrl(currentProjectId, slide.number, id);
             }
         }
 
-        // The source for one take: an API URL on the server, a blob URL in the
-        // browser. Returns null when a browser-mode take has not been resolved
-        // yet, which keeps the camera hidden instead of showing a stale frame.
+        // The blob URL for one take. Null when it has not been resolved yet,
+        // which keeps the camera hidden rather than showing a stale frame.
         function takeSrcFor(slideNum, takeId) {
-            if (isServerMode) {
-                const numStr = String(slideNum).padStart(2, '0');
-                return `/api/slide_video?project=${currentProjectId}&file=slide_${numStr}_${takeId}.webm`;
-            }
             return takeObjectUrls[videoKey(currentProjectId, slideNum, takeId)] || null;
         }
 
@@ -4022,97 +3946,42 @@
             const slide = slides[currentIndex];
             const dur = currentSamples.length / sampleRate;
 
-            if (isServerMode) {
+            // Save to IndexedDB
+            const tx = db.transaction(['audio'], 'readwrite');
+            const store = tx.objectStore('audio');
+            await store.put({
+                key: `${currentProjectId}_${slide.number}`,
+                blob: blob,
+                duration: dur,
+                updatedAt: new Date().toISOString()
+            });
+
+            // Store the camera take and the timeline too. Browser mode used to
+            // drop the recorded blob entirely, so the timeline claimed footage
+            // that no longer existed anywhere and playback showed a frozen
+            // frame instead of the recording.
+            if (recordedCamBlob && takeId) {
                 try {
-                    // 1. Upload audio
-                    const res = await fetch(`/api/save_audio?project=${currentProjectId}&slide=${slide.number}`, {
-                        method: 'POST',
-                        body: blob
-                    });
-                    const data = await res.json();
-
-                    // 2. Upload video if recorded
-                    if (recordedCamBlob && takeId) {
-                        try {
-                            const camUrl = `/api/save_slide_video_take?project=${currentProjectId}&slide=${slide.number}&takeId=${takeId}&x=${webcamState.xPct}&y=${webcamState.yPct}&w=${webcamState.sizePct}&shape=${webcamState.shape}&bgMode=${webcamState.bgMode}`;
-                            await fetch(camUrl, {
-                                method: 'POST',
-                                body: recordedCamBlob
-                            });
-                        } catch (e) {
-                            console.warn("Failed to upload slide webcam video:", e);
-                        }
-                    }
-
-                    // 3. Persist the timeline on EVERY recording, not only when a
-                    // camera was filmed. Recording audio with the camera off
-                    // splices no-camera gaps into it; keeping those in memory only
-                    // meant the server still held the old full-camera timeline, so
-                    // the camera came back — frozen — over the re-recorded stretch
-                    // as soon as the slide was loaded again.
-                    if (Array.isArray(slide.videoTimeline)) {
-                        slide.hasVideo = slide.videoTimeline.some(c => !!c.takeId);
-                        await saveSlideTimeline(currentProjectId, slide.number, slide.videoTimeline, webcamState);
-                    }
-
-                    if (data.success) {
-                        slide.hasAudio = true;
-                        slide.audioDuration = data.duration;
-                        slide.audioUrl = data.audioUrl;
-                        recordingState = 'idle';
-                        showSavedToast();
-                        await fetchSlideAudioWav(preservePlayhead);
-                        renderSidebar();
-                        updateGlobalStats();
-                        updateControlUI();
-                    } else {
-                        alert(t('modalErrorTitle') + " : " + data.error);
-                        recordingState = 'idle';
-                        updateControlUI();
-                    }
-                } catch (err) {
-                    alert("Upload Error : " + err.message);
-                    recordingState = 'idle';
-                    updateControlUI();
+                    await putCameraTake(currentProjectId, slide.number, takeId, recordedCamBlob);
+                } catch (e) {
+                    console.warn("Failed to store camera take:", e);
                 }
-            } else {
-                // Save to IndexedDB
-                const tx = db.transaction(['audio'], 'readwrite');
-                const store = tx.objectStore('audio');
-                await store.put({
-                    key: `${currentProjectId}_${slide.number}`,
-                    blob: blob,
-                    duration: dur,
-                    updatedAt: new Date().toISOString()
-                });
-
-                // Store the camera take and the timeline too. Browser mode used to
-                // drop the recorded blob entirely, so the timeline claimed footage
-                // that no longer existed anywhere and playback showed a frozen
-                // frame instead of the recording.
-                if (recordedCamBlob && takeId) {
-                    try {
-                        await putCameraTake(currentProjectId, slide.number, takeId, recordedCamBlob);
-                    } catch (e) {
-                        console.warn("Failed to store camera take:", e);
-                    }
-                }
-                if (Array.isArray(slide.videoTimeline)) {
-                    slide.hasVideo = slide.videoTimeline.some(c => !!c.takeId);
-                    await persistSlideRecord(slide);
-                }
-
-                slide.hasAudio = true;
-                slide.audioDuration = dur;
-                slide.audioBlob = blob;
-                recordingState = 'idle';
-
-                showSavedToast();
-                await fetchSlideAudioWav(preservePlayhead);
-                renderSidebar();
-                updateGlobalStats();
-                updateControlUI();
             }
+            if (Array.isArray(slide.videoTimeline)) {
+                slide.hasVideo = slide.videoTimeline.some(c => !!c.takeId);
+                await persistSlideRecord(slide);
+            }
+
+            slide.hasAudio = true;
+            slide.audioDuration = dur;
+            slide.audioBlob = blob;
+            recordingState = 'idle';
+
+            showSavedToast();
+            await fetchSlideAudioWav(preservePlayhead);
+            renderSidebar();
+            updateGlobalStats();
+            updateControlUI();
         }
 
         function showSavedToast() {
@@ -4131,7 +4000,7 @@
         // Write a slide's own record back to IndexedDB, merging into whatever is
         // already stored so the fields the studio does not touch survive.
         async function persistSlideRecord(slide) {
-            if (isServerMode || !db || !slide) return;
+            if (!db || !slide) return;
             const key = `${currentProjectId}_${slide.number}`;
             await new Promise(resolve => {
                 const tx = db.transaction(['slides'], 'readwrite');
@@ -4149,25 +4018,13 @@
             });
         }
 
+        // The timeline lives on the slide's own record. Every edit that changes
+        // it — punch-in gaps, cut, paste — must come through here, or it survives
+        // only in memory and is lost on reload.
         async function saveSlideTimeline(projectId, slideNum, timeline, layout) {
             if (!projectId || !slideNum) return;
-            if (!isServerMode) {
-                // Browser mode keeps the timeline on the slide record. Without
-                // this, every timeline edit — punch-in gaps, cut, paste — lived
-                // only in memory and was lost on reload.
-                const slide = slides.find(s => s.number === slideNum);
-                if (slide) await persistSlideRecord(slide);
-                return;
-            }
-            try {
-                await fetch(`/api/save_slide_timeline?project=${projectId}&slide=${slideNum}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ timeline: timeline || [], layout: layout || {} })
-                });
-            } catch (err) {
-                console.warn("Failed to save slide timeline:", err);
-            }
+            const slide = slides.find(s => s.number === slideNum);
+            if (slide) await persistSlideRecord(slide);
         }
 
         // A "gap" clip (takeId null) means: no camera during this span. Gaps are
@@ -4501,26 +4358,17 @@
             slide.hasAudio = false;
             slide.audioDuration = 0;
             slide.audioBlob = null;
-            // The server's delete_audio removes every slide_NN* file, camera takes
-            // and timeline included, so drop the in-memory camera state too.
-            // Leaving it stale made the next recording inherit a timeline whose
-            // take files no longer exist.
+            // Drop the in-memory camera state too: leaving it stale made the next
+            // recording inherit a timeline whose takes no longer exist.
             slide.videoTimeline = [];
             slide.hasVideo = false;
             currentPlaybackVideoTakeId = null;
 
-            if (isServerMode) {
-                try {
-                    await fetch(`/api/delete_audio?project=${currentProjectId}&slide=${slide.number}`, { method: 'POST' });
-                } catch (e) {}
-            } else {
-                const tx = db.transaction(['audio'], 'readwrite');
-                tx.objectStore('audio').delete(`${currentProjectId}_${slide.number}`);
-                // Match the server, whose delete_audio removes every slide_NN*
-                // file: drop the camera takes and the stored timeline as well.
-                await deleteCameraTakesForSlide(currentProjectId, slide.number);
-                await persistSlideRecord(slide);
-            }
+            const tx = db.transaction(['audio'], 'readwrite');
+            tx.objectStore('audio').delete(`${currentProjectId}_${slide.number}`);
+            // Drop the camera takes and the stored timeline along with the audio.
+            await deleteCameraTakesForSlide(currentProjectId, slide.number);
+            await persistSlideRecord(slide);
 
             drawWaveform();
             renderSidebar();
@@ -4764,30 +4612,14 @@
             const text = document.getElementById('prompterScript').value;
             slide.script = text;
 
-            if (isServerMode) {
-                try {
-                    const res = await fetch(`/api/save_script?project=${currentProjectId}&slide=${slide.number}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ script: text })
-                    });
-                    const data = await res.json();
-                    if (data.success) {
-                        showSavedBadge();
-                    }
-                } catch (err) {
-                    console.error("Script save error:", err);
-                }
-            } else {
-                const tx = db.transaction(['slides'], 'readwrite');
-                const store = tx.objectStore('slides');
-                await store.put({
-                    key: `${currentProjectId}_${slide.number}`,
-                    projectId: currentProjectId,
-                    ...slide
-                });
-                showSavedBadge();
-            }
+            const tx = db.transaction(['slides'], 'readwrite');
+            const store = tx.objectStore('slides');
+            await store.put({
+                key: `${currentProjectId}_${slide.number}`,
+                projectId: currentProjectId,
+                ...slide
+            });
+            showSavedBadge();
         }
 
         function showSavedBadge() {
@@ -4885,99 +4717,70 @@
 
             const safeName = title.toLowerCase().replace(/[^a-z0-9]/g, '_');
 
-            if (isServerMode) {
-                // Native Server Mode: Poppler pdftoppm (instant & ultra fast)
-                spinner.style.display = 'block';
+            // Web Mode (GitHub Pages): In-Browser PDF.js with live progress bar & slide counter
+            spinner.style.display = 'none';
+            progressWrap.style.display = 'block';
+            progressBar.style.width = '0%';
+
+            const pdfCopyForPdfJs = new Uint8Array(pdfBytes.slice(0));
+
+            try {
+                const loadingTask = pdfjsLib.getDocument({ data: pdfCopyForPdfJs });
+                const pdfDoc = await loadingTask.promise;
+                const numPages = pdfDoc.numPages;
+
+                const extractedSlides = [];
+                for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+                    const pct = Math.round((pageNum / numPages) * 100);
+                    progressBar.style.width = `${pct}%`;
+                    msg.innerHTML = `<span style="font-size:1.15rem; font-weight:800; color:var(--brand-navy);">Diapositive ${pageNum} / ${numPages} (${pct}%)</span><br><span style="color:var(--text-muted); font-size:0.85rem;">Extraction haute résolution 1080p...</span>`;
+
+                    const page = await pdfDoc.getPage(pageNum);
+                    const viewport = page.getViewport({ scale: 2.0 });
+                    
+                    const renderCanvas = document.createElement('canvas');
+                    renderCanvas.width = viewport.width;
+                    renderCanvas.height = viewport.height;
+                    const renderCtx = renderCanvas.getContext('2d');
+                    
+                    await page.render({ canvasContext: renderCtx, viewport: viewport }).promise;
+                    const imgDataUrl = renderCanvas.toDataURL('image/png');
+                    
+                    extractedSlides.push({
+                        number: pageNum,
+                        topic: '',
+                        title: `Slide ${pageNum}`,
+                        targetTime: '1:00',
+                        script: '',
+                        image: imgDataUrl
+                    });
+                }
+
+                const newProj = {
+                    id: safeName,
+                    title: title,
+                    slideCount: numPages
+                };
+                const tx = db.transaction(['projects', 'slides'], 'readwrite');
+                tx.objectStore('projects').put(newProj);
+                extractedSlides.forEach(s => {
+                    tx.objectStore('slides').put({
+                        key: `${safeName}_${s.number}`,
+                        projectId: safeName,
+                        ...s
+                    });
+                });
+
+                currentProjectId = safeName;
+                await loadProjectsList();
+                await loadProject(currentProjectId);
+                closeModal();
+
+            } catch (err) {
                 progressWrap.style.display = 'none';
-                msg.innerHTML = `<span style="font-size:1.05rem; font-weight:700; color:var(--brand-navy);">Extraction rapide des diapositives 1080p...</span>`;
-
-                const pdfBlobToSend = new Blob([pdfBytes], { type: 'application/pdf' });
-                try {
-                    const res = await fetch(`/api/projects/new?name=${safeName}&title=${encodeURIComponent(title)}`, {
-                        method: 'POST',
-                        body: pdfBlobToSend
-                    });
-                    const data = await res.json();
-                    if (data.success) {
-                        currentProjectId = data.projectId;
-                        await loadProjectsList();
-                        await loadProject(currentProjectId);
-                        closeModal();
-                    } else {
-                        throw new Error(data.error || "Erreur d'import");
-                    }
-                } catch (err) {
-                    spinner.style.display = 'none';
-                    closeBtn.style.display = 'block';
-                    titleEl.textContent = t('modalErrorTitle');
-                    msg.textContent = err.message;
-                }
-            } else {
-                // Web Mode (GitHub Pages): In-Browser PDF.js with live progress bar & slide counter
-                spinner.style.display = 'none';
-                progressWrap.style.display = 'block';
-                progressBar.style.width = '0%';
-
-                const pdfCopyForPdfJs = new Uint8Array(pdfBytes.slice(0));
-
-                try {
-                    const loadingTask = pdfjsLib.getDocument({ data: pdfCopyForPdfJs });
-                    const pdfDoc = await loadingTask.promise;
-                    const numPages = pdfDoc.numPages;
-
-                    const extractedSlides = [];
-                    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-                        const pct = Math.round((pageNum / numPages) * 100);
-                        progressBar.style.width = `${pct}%`;
-                        msg.innerHTML = `<span style="font-size:1.15rem; font-weight:800; color:var(--brand-navy);">Diapositive ${pageNum} / ${numPages} (${pct}%)</span><br><span style="color:var(--text-muted); font-size:0.85rem;">Extraction haute résolution 1080p...</span>`;
-
-                        const page = await pdfDoc.getPage(pageNum);
-                        const viewport = page.getViewport({ scale: 2.0 });
-                        
-                        const renderCanvas = document.createElement('canvas');
-                        renderCanvas.width = viewport.width;
-                        renderCanvas.height = viewport.height;
-                        const renderCtx = renderCanvas.getContext('2d');
-                        
-                        await page.render({ canvasContext: renderCtx, viewport: viewport }).promise;
-                        const imgDataUrl = renderCanvas.toDataURL('image/png');
-                        
-                        extractedSlides.push({
-                            number: pageNum,
-                            topic: '',
-                            title: `Slide ${pageNum}`,
-                            targetTime: '1:00',
-                            script: '',
-                            image: imgDataUrl
-                        });
-                    }
-
-                    const newProj = {
-                        id: safeName,
-                        title: title,
-                        slideCount: numPages
-                    };
-                    const tx = db.transaction(['projects', 'slides'], 'readwrite');
-                    tx.objectStore('projects').put(newProj);
-                    extractedSlides.forEach(s => {
-                        tx.objectStore('slides').put({
-                            key: `${safeName}_${s.number}`,
-                            projectId: safeName,
-                            ...s
-                        });
-                    });
-
-                    currentProjectId = safeName;
-                    await loadProjectsList();
-                    await loadProject(currentProjectId);
-                    closeModal();
-
-                } catch (err) {
-                    progressWrap.style.display = 'none';
-                    closeBtn.style.display = 'block';
-                    titleEl.textContent = t('modalErrorTitle');
-                    msg.textContent = err.message;
-                }
+                closeBtn.style.display = 'block';
+                titleEl.textContent = t('modalErrorTitle');
+                msg.textContent = err.message;
             }
         }
 
@@ -5008,40 +4811,7 @@
             closeBtn.style.display = 'none';
             msg.textContent = t('modalGeneratingMsg');
 
-            if (isServerMode) {
-                try {
-                    spinner.style.display = 'block';
-                    progressWrap.style.display = 'none';
-                    msg.innerHTML = `<span style="font-size:1.05rem; font-weight:600; color:var(--text-main);">${t('modalGeneratingMsg')}</span>`;
-
-                    const res = await fetch(`/api/generate_video?project=${currentProjectId}`, { method: 'POST' });
-                    const data = await res.json();
-                    spinner.style.display = 'none';
-                    closeBtn.style.display = 'block';
-
-                    if (data.success) {
-                        title.textContent = t('modalSuccessTitle');
-                        const downloadUrl = `/api/video?project=${currentProjectId}&t=${Date.now()}`;
-                        msg.innerHTML = `
-                            <div style="text-align:center; padding:15px 0;">
-                                <p style="font-size:1.05rem; color:var(--text-main); margin-bottom:20px;">${t('modalSuccessMsg')}</p>
-                                <a href="${downloadUrl}" download="${currentProjectId}_presentation.mp4" target="_blank" class="btn-primary" style="display:inline-flex; align-items:center; gap:8px; padding:14px 28px; font-size:1.1rem; text-decoration:none; border-radius:8px; font-weight:700; background:linear-gradient(135deg, #0284C7, #0369A1); color:#fff; box-shadow:0 4px 14px rgba(2,132,199,0.35);">
-                                    ${t('downloadVideoBtn')}
-                                </a>
-                            </div>
-                        `;
-                    } else {
-                        title.textContent = t('modalErrorTitle');
-                        msg.textContent = data.message || (currentLang === 'fr' ? "Erreur lors de la génération de la vidéo." : "Error generating video.");
-                    }
-                } catch (err) {
-                    spinner.style.display = 'none';
-                    progressWrap.style.display = 'none';
-                    closeBtn.style.display = 'block';
-                    title.textContent = t('modalErrorTitle');
-                    msg.textContent = err.message;
-                }
-            } else if (webCodecsExportAvailable()) {
+            if (webCodecsExportAvailable()) {
                 // Fast path: encode a real MP4 without replaying the presentation.
                 try {
                     const fmtEta = secs => {
@@ -5666,16 +5436,8 @@
 
             const recFolder = projFolder.folder("recordings");
             for (let s of slides) {
-                if (s.hasAudio) {
-                    if (isServerMode) {
-                        try {
-                            const res = await fetch(s.audioUrl);
-                            const blob = await res.blob();
-                            recFolder.file(`slide_${s.number.toString().padStart(2, '0')}.wav`, blob);
-                        } catch(e){}
-                    } else if (s.audioBlob) {
-                        recFolder.file(`slide_${s.number.toString().padStart(2, '0')}.wav`, s.audioBlob);
-                    }
+                if (s.hasAudio && s.audioBlob) {
+                    recFolder.file(`slide_${s.number.toString().padStart(2, '0')}.wav`, s.audioBlob);
                 }
             }
 

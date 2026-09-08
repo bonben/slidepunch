@@ -1,6 +1,6 @@
 # 🎙️ SlidePunch 🥊
 
-> **Frugal, no-`pip`-install slide-by-slide presentation recording studio with live waveform, punch-in audio repair, synchronized teleprompter, and 1-click 1080p MP4 video rendering.**
+> **Slide-by-slide presentation recording studio that runs entirely in your browser — live waveform, punch-in audio repair, camera overlay, synchronized teleprompter, and 1-click 1080p MP4 export. No install, no server, nothing uploaded.**
 
 <p align="center">
   <a href="https://bonben.github.io/slidepunch/" target="_blank">
@@ -35,30 +35,26 @@
 - ✏️ **Synchronized Editable Teleprompter:** Live speech notes side-by-side with your slides, automatically saved to Markdown (`notes.md`).
 - 🎬 **1-Click 1080p Video Generation:** Stitches your slide images and audio into a professional 1080p MP4 video with high-quality audio and zero sync drift.
 - 🌐 **Bilingual Interface (EN / FR):** Instant one-click toggle between English and French.
-- 🪶 **Frugal & Standalone:** Pure Python standard-library backend (`http.server`) + vanilla-JavaScript frontend. No heavy frameworks, no `npm install`, no `pip` packages. The browser frontend does load a few JS libraries (PDF.js, JSZip, MediaPipe) from a CDN, so first load needs an internet connection.
+- 🪶 **No backend, nothing uploaded:** vanilla JavaScript, no build step, no server. Your slides, recordings and video never leave your machine — projects live in the browser's own storage (IndexedDB). A few libraries (PDF.js, JSZip, MediaPipe, mp4-muxer) load from a CDN, so the first load needs an internet connection.
 
 ---
 
 ## 🚀 Quick Start
 
 ### 1. Requirements
-- **Python 3.8+** (standard library only)
-- **`ffmpeg`** & **`pdftoppm`** (standard on Linux/macOS):
-  ```bash
-  # Ubuntu / Debian
-  sudo apt install ffmpeg poppler-utils
+- **A recent Chrome, Edge or Chromium.** Everything runs in the browser — recording, editing and MP4 export all use browser APIs (WebCodecs, IndexedDB, MediaRecorder).
+- Nothing else. No Python, no `ffmpeg`, no `poppler`, no install.
 
-  # macOS
-  brew install ffmpeg poppler
-  ```
+### 2. Use it
+Open the hosted app: **[bonben.github.io/slidepunch](https://bonben.github.io/slidepunch/)** — that is the whole product.
 
-### 2. Launch SlidePunch
+Or serve the folder yourself:
 ```bash
 git clone https://github.com/bonben/slidepunch.git
 cd slidepunch
-python3 slidepunch.py
+python3 serve_static.py       # http://localhost:8081
 ```
-Open **[http://localhost:8080](http://localhost:8080)** in your browser (Chrome, Firefox, Edge, Safari).
+`serve_static.py` is a convenience only — any static file server works. It mainly exists to send `Cache-Control: no-store`, because the entire application is a single HTML file and a stale cached copy is confusing.
 
 ---
 
@@ -77,7 +73,7 @@ Open **[http://localhost:8080](http://localhost:8080)** in your browser (Chrome,
 
 ```text
 slidepunch/
-├── slidepunch.py         # Standalone server & video compiler
+├── serve_static.py       # Optional local static server (no-cache)
 ├── web/
 │   └── index.html        # Web studio interface (Bilingual EN/FR)
 ├── projects/
@@ -97,7 +93,7 @@ slidepunch/
 
 ## 🛠️ How It Works
 
-1. **Slide Ingestion:** `pdftoppm` renders PDF pages into high-definition raster images.
+1. **Slide Ingestion:** PDF.js renders PDF pages into high-definition raster images, in the browser.
 2. **Audio Streaming & Punch-In:** Audio is captured at 48kHz PCM directly via Web Audio API. When punch-in is triggered at offset $T$, the buffer is sliced at $T$ and newly recorded PCM frames are seamlessly appended.
 3. **HTTP 206 Partial Streaming:** Audio playback uses byte-range streaming for instantaneous scrubbing across takes.
 4. **FFmpeg Video Encoding:** Slide images are looped and coupled with their respective audio takes, then concatenated in stream-copy mode for fast, lossless 1080p video rendering.
