@@ -2198,6 +2198,15 @@
         // STORAGE — IndexedDB, entirely in the browser
         // ==========================================
 
+        // Everything that touches storage goes through this. It opens the database
+        // once and hands the same promise to every caller, so an action started
+        // before init() finished waits for the database instead of finding db null.
+        let dbReady = null;
+        function ensureDb() {
+            if (!dbReady) dbReady = openIndexedDB();
+            return dbReady;
+        }
+
         function openIndexedDB() {
             return new Promise((resolve, reject) => {
                 // v3 adds the 'video' store: without it, camera takes recorded in
@@ -2220,9 +2229,18 @@
                 };
                 req.onsuccess = (e) => {
                     db = e.target.result;
+                    // Another tab opening a newer version would otherwise keep this
+                    // connection alive and block it indefinitely.
+                    db.onversionchange = () => { try { db.close(); } catch (e) {} };
                     resolve(db);
                 };
-                req.onerror = (e) => reject(e);
+                req.onerror = (e) => reject(new Error("IndexedDB refusée par le navigateur"));
+                // Fires when another tab still holds an older version open. Neither
+                // onsuccess nor onerror follows, so without this the promise — and
+                // init() with it — would hang for ever and leave db null.
+                req.onblocked = () => reject(new Error(currentLang === 'fr'
+                    ? "Un autre onglet SlidePunch est ouvert et bloque la mise à jour du stockage. Fermez-le puis rechargez."
+                    : "Another SlidePunch tab is open and blocking the storage upgrade. Close it and reload."));
             });
         }
 
@@ -2241,7 +2259,12 @@
             applyLanguage();
 
             updateModeBadge();
-            await openIndexedDB();
+            try {
+                await ensureDb();
+            } catch (err) {
+                alert(err.message);
+                throw err;
+            }
             try {
                 const tx = db.transaction(['projects', 'slides', 'audio'], 'readwrite');
                 tx.objectStore('projects').delete('hdr_demo');
@@ -2375,6 +2398,7 @@
         async function loadProjectsList() {
             const sel = document.getElementById('projectSelect');
             sel.innerHTML = '';
+            await ensureDb();
 
             const tx = db.transaction(['projects'], 'readonly');
             const store = tx.objectStore('projects');
@@ -2406,6 +2430,7 @@
 
         async function loadProject(projId) {
             currentProjectId = projId;
+            await ensureDb();
             {
                 const tx = db.transaction(['slides', 'audio'], 'readonly');
                 const sStore = tx.objectStore('slides');
@@ -3397,6 +3422,7 @@
         }
 
         async function putCameraTake(projectId, slideNum, takeId, blob) {
+            await ensureDb();
             if (!db) return;
             const key = videoKey(projectId, slideNum, takeId);
             await new Promise((resolve, reject) => {
@@ -3412,6 +3438,7 @@
         async function loadCameraTakeUrl(projectId, slideNum, takeId) {
             const key = videoKey(projectId, slideNum, takeId);
             if (takeObjectUrls[key]) return takeObjectUrls[key];
+            await ensureDb();
             if (!db) return null;
             const rec = await new Promise(r => {
                 const tx = db.transaction(['video'], 'readonly');
@@ -3440,6 +3467,7 @@
         }
 
         async function deleteCameraTakesForSlide(projectId, slideNum) {
+            await ensureDb();
             if (!db) return;
             await new Promise(resolve => {
                 const tx = db.transaction(['video'], 'readwrite');
@@ -3943,6 +3971,7 @@
         }
 
         async function saveSlideAudio(blob, preservePlayhead = true, recordedCamBlob = null, takeId = null) {
+            await ensureDb();
             const slide = slides[currentIndex];
             const dur = currentSamples.length / sampleRate;
 
@@ -4000,6 +4029,7 @@
         // Write a slide's own record back to IndexedDB, merging into whatever is
         // already stored so the fields the studio does not touch survive.
         async function persistSlideRecord(slide) {
+            await ensureDb();
             if (!db || !slide) return;
             const key = `${currentProjectId}_${slide.number}`;
             await new Promise(resolve => {
@@ -4364,6 +4394,7 @@
             slide.hasVideo = false;
             currentPlaybackVideoTakeId = null;
 
+            await ensureDb();
             const tx = db.transaction(['audio'], 'readwrite');
             tx.objectStore('audio').delete(`${currentProjectId}_${slide.number}`);
             // Drop the camera takes and the stored timeline along with the audio.
@@ -4612,6 +4643,7 @@
             const text = document.getElementById('prompterScript').value;
             slide.script = text;
 
+            await ensureDb();
             const tx = db.transaction(['slides'], 'readwrite');
             const store = tx.objectStore('slides');
             await store.put({
@@ -4716,8 +4748,9 @@
             closeBtn.style.display = 'none';
 
             const safeName = title.toLowerCase().replace(/[^a-z0-9]/g, '_');
+            await ensureDb();
 
-            // Web Mode (GitHub Pages): In-Browser PDF.js with live progress bar & slide counter
+            // In-browser PDF.js rendering, with live progress bar & slide counter
             spinner.style.display = 'none';
             progressWrap.style.display = 'block';
             progressBar.style.width = '0%';
